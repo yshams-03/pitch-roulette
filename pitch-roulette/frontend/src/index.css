@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pitch-black: #0D0D0F;
+  --color-pitch-dark: #141417;
+  --color-pitch-card: #1A1A1F;
+  --color-pitch-border: #2A2A32;
+  --color-pitch-green: #39FF14;
+  --color-pitch-amber: #F5A623;
+  --color-pitch-red: #C0392B;
+  --color-pitch-muted: #6B7280;
+
+  --font-family-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+
+  --animate-pulse-ring: pulse-ring 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-chip-fly: chip-fly 0.6s ease-out forwards;
+  --animate-overlay-slam: overlay-slam 0.15s ease-out forwards;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes chip-fly {
+  0% { transform: translateY(-40px) translateX(20px); opacity: 1; }
+  100% { transform: translateY(0) translateX(0); opacity: 0; }
+}
+
+@keyframes overlay-slam {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  background-color: var(--color-pitch-black);
+  color: #fff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
