@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@radix-ui/react-slider": "^1.4.0",
+    "@sentry/react": "^9.47.1",
     "@supabase/supabase-js": "^2.108.1",
     "@tailwindcss/vite": "^4.3.0",
     "autoprefixer": "^10.5.0",
@@ -48,6 +49,7 @@
     "jsdom": "^26.1.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
+    "vercel": "^54.14.2",
     "vite": "^8.0.12",
     "vitest": "^3.2.4"
   }

@@ -28,6 +28,7 @@ from services.match_engine import (
     resolve_active_bet,
     cleanup_stale_simulation_rooms,
 )
+from services.host_management import cleanup_orphan_host_rooms
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,9 @@ async def _tick_once() -> None:
         n = cleanup_abandoned_live_demo_rooms()
         if n:
             logger.info("Auto-ended %s stale LIVE demo room(s)", n)
+        n_orphan = cleanup_orphan_host_rooms()
+        if n_orphan:
+            logger.info("Orphan host cleanup: %s room(s)", n_orphan)
     except APIError as e:
         if not _missing_phase2_table(e):
             logger.debug("cleanup skipped: %s", e)

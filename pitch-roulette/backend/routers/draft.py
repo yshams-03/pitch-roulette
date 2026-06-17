@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from auth import get_current_user_id
 from models import DraftPickRequest
 from services.draft import get_squads, list_picks, pick_player, start_draft_room
+from services.feature_flags import require_flag
 from services.room_snapshot import room_snapshot as _room_snapshot
 from database import get_supabase
 
@@ -19,6 +20,7 @@ def _get_room(code: str) -> dict:
 
 @router.get("/{code}/draft/squads")
 async def draft_squads(code: str):
+    require_flag("fantasy_draft")
     try:
         return await get_squads(code)
     except ValueError as e:
@@ -27,6 +29,7 @@ async def draft_squads(code: str):
 
 @router.get("/{code}/draft/picks")
 async def draft_picks(code: str):
+    require_flag("fantasy_draft")
     room = _get_room(code)
     picks = list_picks(room["id"])
     grouped: dict[str, dict] = {}
@@ -44,6 +47,7 @@ async def draft_picks(code: str):
 
 @router.post("/{code}/draft/pick")
 async def draft_pick(code: str, body: DraftPickRequest, user_id: str = Depends(get_current_user_id)):
+    require_flag("fantasy_draft")
     try:
         return pick_player(code, user_id, body.player_id)
     except ValueError as e:
@@ -54,6 +58,7 @@ async def draft_pick(code: str, body: DraftPickRequest, user_id: str = Depends(g
 
 @router.post("/{code}/start-draft")
 async def start_draft(code: str, user_id: str = Depends(get_current_user_id)):
+    require_flag("fantasy_draft")
     try:
         updated = start_draft_room(code, user_id)
         return _room_snapshot(updated)

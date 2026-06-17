@@ -13,6 +13,7 @@ from models import (
     ResolveFlashBetRequest,
     RoomMessageRequest,
     ToggleChatRequest,
+    TransferHostRequest,
 )
 from services import sports_service
 from services.bots import (
@@ -48,6 +49,9 @@ from services.rooms_live import finalize_go_live
 from services.draft import list_picks
 from services.sabotages import silence_seconds_remaining
 from services.sides import swap_side
+from services.host_management import promote_next_host, transfer_host
+from services.feature_flags import require_flag
+from services.telemetry import track_event
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -80,6 +84,11 @@ async def create_room(body: CreateRoomRequest, user_id: str = Depends(get_curren
             phase=phase,
             group_id=body.group_id,
         )
+        track_event("room_created", user_id=user_id, properties={
+            "room_code": room.get("room_code"),
+            "match_source": "demo_simulation",
+            "group_id": body.group_id,
+        })
         return room
 
     if body.match_source == "manual":
@@ -129,6 +138,11 @@ async def create_room(body: CreateRoomRequest, user_id: str = Depends(get_curren
     rc = int(prof.data[0].get("rooms_created", 0)) + 1 if prof.data else 1
     db.table("profiles").update({"rooms_created": rc}).eq("id", user_id).execute()
 
+    track_event("room_created", user_id=user_id, properties={
+        "room_code": code,
+        "match_source": body.match_source or "live_api",
+        "group_id": body.group_id,
+    })
     return _room_snapshot(room)
 
 
@@ -165,6 +179,7 @@ async def join_room(code: str, user_id: str = Depends(get_current_user_id)):
             "session_pc": 100,
         }).execute().data[0]
         ensure_starting_pc(r["id"], user_id, row["id"])
+    track_event("room_joined", user_id=user_id, properties={"room_code": r["room_code"]})
     return _room_snapshot(r)
 
 
@@ -248,6 +263,7 @@ async def go_live(code: str, user_id: str = Depends(get_current_user_id)):
 
 @router.post("/{code}/swap-side")
 async def swap_side_route(code: str, user_id: str = Depends(get_current_user_id)):
+    require_flag("side_assignment")
     r = _get_room(code)
     if r["state"] != "PREDICTING":
         raise HTTPException(409, detail={"error": "invalid_state", "current": r["state"]})
@@ -360,11 +376,13 @@ async def resolve_active_route(code: str, body: ResolveFlashBetRequest, user_id:
 
 @router.get("/{code}/flash-bets")
 async def get_flash_bets(code: str):
+    require_flag("flash_bets")
     return {"bets": list_flash_bets(code)}
 
 
 @router.post("/{code}/flash-bets")
 async def create_flash_bet(code: str, body: CreateFlashBetRequest, user_id: str = Depends(get_current_user_id)):
+    require_flag("flash_bets")
     try:
         bet = create_manual_flash_bet(code, user_id, body.question, body.options, body.wager_tier)
     except PermissionError:
@@ -378,6 +396,7 @@ async def create_flash_bet(code: str, body: CreateFlashBetRequest, user_id: str 
 async def answer_flash_bet(
     code: str, bet_id: str, body: FlashBetAnswerRequest, user_id: str = Depends(get_current_user_id)
 ):
+    require_flag("flash_bets")
     try:
         return submit_answer(code, bet_id, user_id, body.chosen_option)
     except (PermissionError, ValueError) as e:
@@ -388,6 +407,7 @@ async def answer_flash_bet(
 async def resolve_flash_bet_route(
     code: str, bet_id: str, body: ResolveFlashBetRequest, user_id: str = Depends(get_current_user_id)
 ):
+    require_flag("flash_bets")
     try:
         return resolve_flash_bet(code, bet_id, user_id, body.correct_option)
     except PermissionError:
@@ -398,6 +418,7 @@ async def resolve_flash_bet_route(
 
 @router.get("/{code}/flash-bets/{bet_id}/results")
 async def flash_bet_results(code: str, bet_id: str):
+    require_flag("flash_bets")
     try:
         return get_bet_results(code, bet_id)
     except ValueError as e:
@@ -464,3 +485,33 @@ async def kick_player(code: str, body: KickPlayerRequest, user_id: str = Depends
         raise HTTPException(400, detail={"error": "cannot_kick_self"})
     db.table("room_players").delete().eq("room_id", r["id"]).eq("user_id", body.user_id).execute()
     return _room_snapshot(r)
+
+
+@router.post("/{code}/transfer-host")
+async def transfer_host_route(code: str, body: TransferHostRequest, user_id: str = Depends(get_current_user_id)):
+    r = _get_room(code)
+    _require_host(r, user_id)
+    try:
+        updated = transfer_host(r, user_id, body.user_id)
+    except PermissionError:
+        raise HTTPException(403, detail={"error": "not_host"})
+    except ValueError as e:
+        raise HTTPException(400, detail={"error": str(e)})
+    return _room_snapshot(updated)
+
+
+@router.post("/{code}/leave")
+async def leave_room(code: str, user_id: str = Depends(get_current_user_id)):
+    db = get_supabase()
+    r = _get_room(code)
+    is_host = r.get("host_id") == user_id
+    db.table("room_players").delete().eq("room_id", r["id"]).eq("user_id", user_id).execute()
+    if is_host and r["state"] in ("LOBBY", "PREDICTING", "CLOSED", "DRAFTING", "LIVE"):
+        refreshed = _get_room(code)
+        promoted = promote_next_host(refreshed)
+        if promoted:
+            return _room_snapshot(promoted)
+    if is_host:
+        db.table("rooms").delete().eq("id", r["id"]).execute()
+        return {"left": True, "room_deleted": True}
+    return {"left": True, "room_deleted": False}

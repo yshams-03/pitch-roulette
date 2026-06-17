@@ -534,21 +534,48 @@ npm run test:unit  # 10/10 passing
 
 ---
 
-## Next up — Merge + Phase 4 deployment
+## Phase 4 — Production readiness (10/10)
+
+### Ops & reliability
+
+| Item | Status |
+|------|--------|
+| Feature flags (`FEATURE_*` env kill switches) | Done — backend guards + frontend `useFeatureFlags` |
+| Host transfer API + UI | Done — `POST /transfer-host`, Host panel “Make host” |
+| Orphan room cleanup | Done — event pipeline `cleanup_orphan_host_rooms()` |
+| Product telemetry | Done — `analytics_events` table, `/api/events`, funnel metrics |
+| Sentry (backend + frontend) | Done — optional via `SENTRY_DSN` / `VITE_SENTRY_DSN` |
+| Health endpoint enrichment | Done — flags, sentry, telemetry_24h |
+| Load test script | Done — `backend/scripts/load_test_rooms.py` |
+| RUNBOOK.md + DEPLOY.md | Done |
+| Staging deploy verify workflow | Done — `.github/workflows/deploy-staging.yml` |
+| PR E2E smoke (home page) | Done — `test.yml` job `e2e-smoke` |
+| Docker + Railway + Vercel config | Done — `Dockerfile`, `railway.toml`, `vercel.json` |
+| Migration `007_phase4_ops.sql` | **Apply in Supabase** before prod telemetry |
+
+### Verification
+
+```bash
+cd backend
+pytest tests/ -v --tb=short
+
+cd ../frontend
+npm run build
+npm run test:unit
+```
+
+### Deploy checklist
+
+1. Apply migration **`007`** in Supabase SQL Editor
+2. Deploy backend to Railway (see `DEPLOY.md`)
+3. Deploy frontend to Vercel
+4. Run deploy-staging workflow against API URL
+5. Optional: `python scripts/load_test_rooms.py --rooms 50 --token <jwt>`
 
 ### Before merge to `main`
 
-1. Run migrations **`003`–`006`** in Supabase SQL Editor (in order, after `002`)
+1. Run migrations **`003`–`007`** in Supabase SQL Editor (in order)
 2. Open PR: [compare `main`...`feat/phase3-sabotage`](https://github.com/yshams-03/pitch-roulette/compare/main...feat/phase3-sabotage)
-3. Confirm CI green (`backend` + `frontend-unit`)
+3. Confirm CI green (`backend` + `frontend-unit` + `e2e-smoke`)
 4. Merge PR
 
-### After merge — Phase 4 (production launch)
-
-See deployment prompt when ready:
-
-- **Frontend:** Vercel (`pitch-roulette/frontend`)
-- **Backend:** Railway (`pitch-roulette/backend`)
-- **Database:** Production Supabase project + all migrations
-- **Secrets:** `VITE_SUPABASE_*`, `SUPABASE_SERVICE_KEY`, `FOOTBALL_DATA_API_KEY`, E2E nightly secrets
-- **GitHub:** Branch protection on `main`; nightly E2E secrets in repo settings

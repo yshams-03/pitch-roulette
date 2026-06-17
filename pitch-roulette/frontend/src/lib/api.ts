@@ -57,6 +57,12 @@ async function request<T>(
 
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
+  featureFlags: () => request<{ flags: Record<string, boolean> }>('/api/flags'),
+  trackEvent: (token: string, event_name: string, properties: Record<string, unknown>) =>
+    request<{ ok: boolean }>('/api/events', token, {
+      method: 'POST',
+      body: JSON.stringify({ event_name, properties }),
+    }),
   standings: (comp = 'WC') => request<Record<string, unknown>>(`/api/standings/${comp}`),
   matches: (comp = 'WC') => request<Record<string, unknown>>(`/api/matches/${comp}`),
   liveMatch: (id: string) => request<Record<string, unknown>>(`/api/matches/${id}/live`),
@@ -148,6 +154,16 @@ export const api = {
     }),
   kickPlayer: (token: string, code: string, user_id: string) =>
     request(`/api/rooms/${code}/kick`, token, { method: 'POST', body: JSON.stringify({ user_id }) }),
+  transferHost: (token: string, code: string, user_id: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/transfer-host`, token, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+  leaveRoom: (token: string, code: string) =>
+    request<{ left: boolean; room_deleted?: boolean }>(`/api/rooms/${code}/leave`, token, {
+      method: 'POST',
+      body: '{}',
+    }),
 
   sabotageShop: (token: string, code: string) =>
     request<{ catalog: SabotageShopItem[]; session_pc: number; room_state: string }>(

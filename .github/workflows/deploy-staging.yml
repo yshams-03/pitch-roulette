@@ -1,0 +1,24 @@
+name: Deploy Staging Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Backend URL to verify (e.g. https://pitch-roulette-staging.up.railway.app)'
+        required: true
+        type: string
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check
+        run: |
+          URL="${{ github.event.inputs.api_url }}"
+          echo "Checking $URL/api/health"
+          BODY=$(curl -sf "$URL/api/health")
+          echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('supabase_connected') is True, d; print('OK', d.get('version'), d.get('environment'))"
+
+      - name: Feature flags
+        run: |
+          curl -sf "${{ github.event.inputs.api_url }}/api/flags" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'flags' in d; print('flags', d['flags'])"

@@ -57,6 +57,10 @@ class KickPlayerRequest(BaseModel):
     user_id: str
 
 
+class TransferHostRequest(BaseModel):
+    user_id: str
+
+
 class DraftPickRequest(BaseModel):
     player_id: str
 

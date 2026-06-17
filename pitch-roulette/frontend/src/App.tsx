@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
+import { setAnalyticsTokenProvider, trackPageView } from './lib/analytics';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
@@ -20,15 +21,29 @@ import { RoomLivePage } from './pages/RoomLivePage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { DemoSandboxPage } from './pages/DemoSandboxPage';
 
+function AnalyticsListener() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
+
 export default function App() {
   const init = useAuthStore((s) => s.init);
+  const session = useAuthStore((s) => s.session);
 
   useEffect(() => {
     init();
   }, [init]);
 
+  useEffect(() => {
+    setAnalyticsTokenProvider(() => useAuthStore.getState().session?.access_token ?? null);
+  }, [session?.access_token]);
+
   return (
     <BrowserRouter>
+      <AnalyticsListener />
       <AppLayout>
         <Routes>
           <Route path="/" element={<HomePage />} />

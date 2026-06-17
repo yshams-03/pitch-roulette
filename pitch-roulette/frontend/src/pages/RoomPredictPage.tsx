@@ -12,6 +12,7 @@ import { Card } from '../components/ui/Card';
 import { Stepper } from '../components/ui/Stepper';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import type { PredictedOutcome, Side } from '../../../shared/types';
 
 function outcomeFromScore(h: number, a: number): PredictedOutcome {
@@ -30,6 +31,7 @@ export function RoomPredictPage() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { session, userId } = useAuthStore();
+  const flags = useFeatureFlags();
   const { room, players, predictions, connectionStatus, refresh } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'predict');
   const [home, setHome] = useState(1);
@@ -147,7 +149,7 @@ export function RoomPredictPage() {
           {mySide === 'HOME' ? '🔵' : '🔴'} You&apos;re {teamName}
         </p>
       )}
-      {room.state === 'PREDICTING' && mySide && !me?.side_swap_used && (
+      {room.state === 'PREDICTING' && mySide && !me?.side_swap_used && flags.side_assignment && (
         <button
           type="button"
           data-testid="swap-side-btn"

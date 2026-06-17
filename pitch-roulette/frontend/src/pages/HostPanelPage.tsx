@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { isSimulationRoom } from '../lib/roomUtils';
 import type { FlashBet, RoomPlayer, Sabotage } from '../../../shared/types';
 
@@ -19,6 +20,7 @@ const PRESETS: { question: string; options: string[] }[] = [
 export function HostPanelPage() {
   const { code } = useParams<{ code: string }>();
   const { session, userId } = useAuthStore();
+  const flags = useFeatureFlags();
   const { room, players, refresh } = useRoomRealtime(code);
   const [bets, setBets] = useState<FlashBet[]>([]);
   const [customQ, setCustomQ] = useState('');
@@ -141,6 +143,18 @@ export function HostPanelPage() {
     refresh();
   };
 
+  const makeHost = async (uid: string) => {
+    if (!guard()) return;
+    if (!window.confirm('Transfer host role to this player?')) return;
+    try {
+      await api.transferHost(session!.access_token, code!, uid);
+      toast.success('Host transferred');
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Transfer failed');
+    }
+  };
+
   const toggleChat = async (enabled: boolean) => {
     if (!guard()) return;
     await api.toggleChat(session!.access_token, code!, enabled);
@@ -192,16 +206,18 @@ export function HostPanelPage() {
           )}
           {room.state === 'CLOSED' && (
             <>
-              <button type="button" onClick={async () => {
-                if (!session || !code) return;
-                await api.startDraft(session.access_token, code);
-                toast.success('Draft started');
-                refresh();
-              }} className="ui-btn ui-btn-primary w-full">
-                Start draft
-              </button>
+              {flags.fantasy_draft && (
+                <button type="button" onClick={async () => {
+                  if (!session || !code) return;
+                  await api.startDraft(session.access_token, code);
+                  toast.success('Draft started');
+                  refresh();
+                }} className="ui-btn ui-btn-primary w-full">
+                  Start draft
+                </button>
+              )}
               <button type="button" onClick={goLive} className="ui-btn w-full border border-pitch-muted text-pitch-muted">
-                Skip draft / Go live
+                {flags.fantasy_draft ? 'Skip draft / Go live' : 'Go live'}
               </button>
             </>
           )}
@@ -219,7 +235,7 @@ export function HostPanelPage() {
         <p className="text-xs text-pitch-muted mt-2">State: {room.state}</p>
       </section>
 
-      {room.state === 'LIVE' && (
+      {room.state === 'LIVE' && flags.flash_bets && (
         <section className="mb-6">
           <h2 className="text-xs text-pitch-muted uppercase mb-2">Flash bets</h2>
 
@@ -344,14 +360,24 @@ export function HostPanelPage() {
               <Avatar name={p.display_name || '?'} color={p.avatar_color} size="sm" />
               <span className="text-sm text-white flex-1">{p.display_name}</span>
               {!p.is_host && (
-                <button
-                  type="button"
-                  data-testid={`kick-player-${p.user_id}`}
-                  onClick={() => kick(p.user_id)}
-                  className="text-xs text-red-400"
-                >
-                  Kick
-                </button>
+                <>
+                  <button
+                    type="button"
+                    data-testid={`transfer-host-${p.user_id}`}
+                    onClick={() => makeHost(p.user_id)}
+                    className="text-xs text-pitch-green mr-2"
+                  >
+                    Make host
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`kick-player-${p.user_id}`}
+                    onClick={() => kick(p.user_id)}
+                    className="text-xs text-red-400"
+                  >
+                    Kick
+                  </button>
+                </>
               )}
             </div>
           ))}

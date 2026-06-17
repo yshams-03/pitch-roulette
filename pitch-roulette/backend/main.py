@@ -14,8 +14,29 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import demo_compat, draft, groups, health, leaderboard, profiles, rooms, sabotages, sports
+from routers import demo_compat, draft, groups, health, leaderboard, ops, profiles, rooms, sabotages, sports
 from services.event_pipeline import start_event_pipeline
+
+
+def _init_sentry() -> None:
+    dsn = os.getenv("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=os.getenv("ENVIRONMENT", "development"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            integrations=[FastApiIntegration()],
+        )
+    except Exception:
+        pass
+
+
+_init_sentry()
 
 
 @asynccontextmanager
@@ -29,6 +50,9 @@ app = FastAPI(title="Pitch Roulette API", version="3.0.0", lifespan=lifespan)
 
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 origins = [frontend_url]
+staging = os.getenv("STAGING_FRONTEND_URL", "")
+if staging:
+    origins.append(staging)
 for host in ("http://localhost", "http://127.0.0.1"):
     for port in ("5173", "5174", "5175", "5176"):
         o = f"{host}:{port}"
@@ -44,6 +68,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(ops.router)
 app.include_router(demo_compat.router)
 app.include_router(sports.router)
 app.include_router(profiles.router)

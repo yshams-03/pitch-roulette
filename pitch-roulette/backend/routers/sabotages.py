@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from auth import get_current_user_id
 from models import PurchaseSabotageRequest
+from services.feature_flags import require_flag
 from services.sabotages import get_shop, list_sabotages, purchase_sabotage, silence_seconds_remaining
 
 router = APIRouter(prefix="/api/rooms", tags=["sabotages"])
@@ -9,6 +10,7 @@ router = APIRouter(prefix="/api/rooms", tags=["sabotages"])
 
 @router.get("/{code}/sabotages/shop")
 async def sabotage_shop(code: str, user_id: str = Depends(get_current_user_id)):
+    require_flag("sabotage_shop")
     try:
         return get_shop(code, user_id)
     except ValueError as e:
@@ -17,6 +19,7 @@ async def sabotage_shop(code: str, user_id: str = Depends(get_current_user_id)):
 
 @router.get("/{code}/sabotages")
 async def get_sabotages(code: str, user_id: str = Depends(get_current_user_id)):
+    require_flag("sabotage_shop")
     try:
         return list_sabotages(code, user_id)
     except ValueError as e:
@@ -29,6 +32,7 @@ async def buy_sabotage(
     body: PurchaseSabotageRequest,
     user_id: str = Depends(get_current_user_id),
 ):
+    require_flag("sabotage_shop")
     try:
         return purchase_sabotage(code, user_id, body.sabotage_type, body.target_user_id)
     except ValueError as e:

@@ -15,6 +15,7 @@ import { RoomChat } from '../components/RoomChat';
 import { RoomConnectionBadge } from '../components/RoomConnectionBadge';
 import { SabotageShop } from '../components/SabotageShop';
 import { SabotageNotification } from '../components/SabotageNotification';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
 import type { FlashBet, FlashBetAnswer, MatchEventLog, RoomPlayer, Sabotage } from '../../../shared/types';
@@ -22,6 +23,7 @@ import type { FlashBet, FlashBetAnswer, MatchEventLog, RoomPlayer, Sabotage } fr
 export function RoomLivePage() {
   const { code } = useParams<{ code: string }>();
   const { session, userId } = useAuthStore();
+  const flags = useFeatureFlags();
   const { room, players, connectionStatus, refresh } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'live');
   const [bets, setBets] = useState<FlashBet[]>([]);
@@ -242,7 +244,7 @@ export function RoomLivePage() {
         </div>
       )}
 
-      {activeBet && (
+      {activeBet && flags.flash_bets && (
         <FlashBetCard
           key={activeBet.id}
           bet={activeBet}
@@ -338,7 +340,7 @@ export function RoomLivePage() {
 
       <ReactionOverlay roomId={room.id} userId={userId!} />
 
-      {room.state === 'LIVE' && (
+      {room.state === 'LIVE' && flags.sabotage_shop && (
         <SabotageShop
           code={code!}
           token={session.access_token}

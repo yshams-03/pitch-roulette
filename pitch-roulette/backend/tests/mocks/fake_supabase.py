@@ -40,6 +40,14 @@ class _Query:
         self._filters.append(("eq", col, val))
         return self
 
+    def in_(self, col: str, vals: list[Any]) -> _Query:
+        self._filters.append(("in", col, vals))
+        return self
+
+    def gte(self, col: str, val: Any) -> _Query:
+        self._filters.append(("gte", col, val))
+        return self
+
     def lt(self, col: str, val: Any) -> _Query:
         self._lt = (col, val)
         return self
@@ -73,7 +81,7 @@ class _Query:
                     row["id"] = _new_id()
                 if "created_at" not in row and self._table in (
                     "rooms", "flash_bets", "room_messages", "pc_transactions",
-                    "sabotages", "draft_picks",
+                    "sabotages", "draft_picks", "analytics_events",
                 ):
                     row["created_at"] = datetime.now(timezone.utc).isoformat()
                 if "purchased_at" not in row and self._table == "sabotages":
@@ -111,6 +119,12 @@ class _Query:
         for kind, col, val in self._filters:
             if kind == "eq" and row.get(col) != val:
                 return False
+            if kind == "in" and row.get(col) not in val:
+                return False
+            if kind == "gte":
+                rv = row.get(col)
+                if rv is None or rv < val:
+                    return False
         return True
 
 

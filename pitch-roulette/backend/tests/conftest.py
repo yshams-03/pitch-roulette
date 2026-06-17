@@ -94,6 +94,8 @@ def client(fake_db: FakeSupabase, auth_user_id: str, monkeypatch):
     monkeypatch.setattr("services.draft.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.rooms_live.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.room_snapshot.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.host_management.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.telemetry.get_supabase", lambda: fake_db)
 
     from auth import get_current_user_id
     from main import app
