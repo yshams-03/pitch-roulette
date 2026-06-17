@@ -1,7 +1,14 @@
 """Unit tests for fantasy draft."""
 import pytest
 
-from services.draft import auto_assign_remaining, pick_player, pick_count, DEMO_SQUAD
+from services.draft import (
+    auto_assign_remaining,
+    demo_player_for_event,
+    pick_count,
+    pick_player,
+    process_draft_event,
+    DEMO_SQUAD,
+)
 
 
 @pytest.fixture
@@ -33,3 +40,16 @@ class TestDraftPick:
         n = auto_assign_remaining("room-1")
         assert n >= 3
         assert pick_count("room-1", "player-2") == 3
+
+
+class TestDraftRewards:
+    def test_demo_player_for_goal(self):
+        pid = demo_player_for_event("GOAL_HOME")
+        assert pid in {p["player_id"] for p in DEMO_SQUAD if p["team"] == "HOME"}
+
+    def test_process_draft_event_goal(self, draft_db):
+        pid = DEMO_SQUAD[5]["player_id"]  # Mbappé
+        pick_player("TEST01", "player-2", pid)
+        process_draft_event("room-1", "GOAL_HOME", pid)
+        row = next(p for p in draft_db.tables["draft_picks"] if p["player_id"] == pid)
+        assert float(row.get("pc_earned") or 0) == 25.0

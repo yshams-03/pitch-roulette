@@ -5,7 +5,7 @@ Tests adapt to the current UI/API without modifying feature code. Documented gap
 | Area | Spec expectation | Current behavior | Test approach |
 |------|------------------|------------------|---------------|
 | Host chat delete UI | 🗑️ on host panel | Delete API only; live chat shows "message removed" | API delete + live chat assertion |
-| Draft Performance results | Section on results page | Not implemented on `RoomResultsPage` | Draft picks verified via API |
+| Draft Performance results | Section on results page | `draft-performance` tab on `RoomResultsPage` | API + UI |
 | PC win/loss toasts | Realtime toast on `pc_transactions` | Not wired | PC verified via room snapshot API |
 | FULL_TIME auto-end | Pipeline ends room within 40s | Needs `match_data.status=FINISHED` on LIVE room | Intentionally skipped; unit-tested |
 | Side-colored live leaderboard | Blue/red borders | Not on `RoomLivePage` | Sides verified via API + badge |
