@@ -72,7 +72,8 @@ class _Query:
                 if "id" not in row:
                     row["id"] = _new_id()
                 if "created_at" not in row and self._table in (
-                    "rooms", "flash_bets", "room_messages", "pc_transactions", "sabotages"
+                    "rooms", "flash_bets", "room_messages", "pc_transactions",
+                    "sabotages", "draft_picks",
                 ):
                     row["created_at"] = datetime.now(timezone.utc).isoformat()
                 if "purchased_at" not in row and self._table == "sabotages":

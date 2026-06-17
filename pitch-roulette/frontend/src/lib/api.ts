@@ -165,6 +165,9 @@ export const api = {
       body: JSON.stringify({ sabotage_type, target_user_id }),
     }),
 
+  swapSide: (token: string, code: string) =>
+    request(`/api/rooms/${code}/swap-side`, token, { method: 'POST', body: '{}' }),
+
   fastForward: (token: string, code: string) =>
     request(`/api/rooms/${code}/fast-forward`, token, { method: 'POST', body: '{}' }),
   injectEvent: (token: string, code: string, event_type: string) =>

@@ -45,6 +45,7 @@ from services.pitch_chips import ensure_starting_pc
 from services.room_messages import delete_message, list_messages, post_message
 from services.room_snapshot import room_snapshot as _room_snapshot
 from services.sabotages import silence_seconds_remaining
+from services.sides import swap_side
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -173,6 +174,8 @@ async def start_predictions(code: str, user_id: str = Depends(get_current_user_i
         raise HTTPException(409, detail={"error": "invalid_state", "current": r["state"]})
     updated = db.table("rooms").update({"state": "PREDICTING"}).eq("id", r["id"]).execute().data[0]
     on_predictions_opened(r["id"], r, r["host_id"])
+    from services.sides import assign_room_sides
+    assign_room_sides(r["id"])
     updated = db.table("rooms").select("*").eq("id", r["id"]).execute().data[0]
     return _room_snapshot(updated)
 
@@ -255,6 +258,20 @@ async def go_live(code: str, user_id: str = Depends(get_current_user_id)):
 
     updated = db.table("rooms").update(update).eq("id", r["id"]).execute().data[0]
     return _room_snapshot(updated)
+
+
+@router.post("/{code}/swap-side")
+async def swap_side_route(code: str, user_id: str = Depends(get_current_user_id)):
+    r = _get_room(code)
+    if r["state"] != "PREDICTING":
+        raise HTTPException(409, detail={"error": "invalid_state", "current": r["state"]})
+    try:
+        row = swap_side(r["id"], user_id)
+        return {"player": row}
+    except ValueError as e:
+        err = str(e)
+        status = 409 if err in ("swap_would_unbalance", "swap_already_used") else 400
+        raise HTTPException(status, detail={"error": err})
 
 
 @router.post("/{code}/end")

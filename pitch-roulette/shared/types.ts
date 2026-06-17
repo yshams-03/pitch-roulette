@@ -1,4 +1,5 @@
 export type RoomState = 'LOBBY' | 'PREDICTING' | 'CLOSED' | 'LIVE' | 'FULL_TIME' | 'RESULTS';
+export type Side = 'HOME' | 'AWAY';
 export type PredictedOutcome = 'HOME_WIN' | 'DRAW' | 'AWAY_WIN';
 export type LeaderboardPeriod = 'alltime' | 'month' | 'week';
 export type FlashBetState = 'PENDING' | 'OPEN' | 'LOCKED' | 'RESOLVED';
@@ -126,6 +127,8 @@ export interface RoomPlayer {
   avatar_color?: string;
   session_pp?: number;
   session_pc?: number;
+  assigned_side?: Side;
+  side_swap_used?: boolean;
 }
 
 export interface Prediction {
