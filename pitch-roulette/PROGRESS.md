@@ -1,8 +1,9 @@
 # Pitch Roulette — Project Progress
 
 **Last updated:** 17 June 2026  
-**Version:** 3.0.0 → Phase 3 in progress  
-**Status:** Phase 3 Features 2–5 on `feat/phase3-sabotage` — **64** pytest + **10** Vitest passing locally
+**Version:** 3.0.0 + Phase 3 complete (pending merge)  
+**Branch:** `feat/phase3-sabotage` pushed to GitHub — **PR to `main` ready**  
+**Status:** **67** pytest + **10** Vitest + **69** Playwright E2E specs passing locally
 
 ---
 
@@ -117,23 +118,27 @@ Full match flow **without a real live fixture** — France vs Netherlands with 3
 ## Updated room flow
 
 ```
-/demo (optional) → /lobby → /predict → /live → /results
+```
+/demo (optional) → /lobby → /predict → /draft → /live → /results
 ```
 
 **State machine:**
 
 ```
-LOBBY → PREDICTING → CLOSED → LIVE → FULL_TIME → RESULTS
+LOBBY → PREDICTING → CLOSED → DRAFTING → LIVE → FULL_TIME → RESULTS
 ```
 
 | Step | Route | What happens |
 |------|-------|--------------|
 | Demo entry | `/demo` | Creates simulation room in LOBBY, redirects to lobby |
 | Lobby | `/room/:code/lobby` | Players join, host starts predictions |
-| Predict | `/room/:code/predict` | Score predictions, host locks, host goes live |
-| Live | `/room/:code/live` | Flash bets, match events feed, chat, reactions |
-| Results | `/room/:code/results` | Prediction PP awarded on **End match** |
+| Predict | `/room/:code/predict` | Side reveal, score predictions, optional side swap (20 PC) |
+| Draft | `/room/:code/draft` | 60s fantasy draft — pick 3 players per side, PC on goals |
+| Live | `/room/:code/live` | Flash bets, sabotage shop, match events, chat, reactions |
+| Results | `/room/:code/results` | PP skill board + PC party board, draft performance tab |
 | Host panel | `/host/:code` | Second-screen controls for host |
+
+**Groups:** `/groups/:id` → **Watch Together** creates a live or demo room with `group_id` attached.
 
 **Breaking change from Phase 1:** `POST /close` now only **locks** predictions (CLOSED). Host must **Go live** then **End match** to award prediction PP.
 
@@ -147,10 +152,10 @@ Runs on every **push to `main`** and **pull request to `main`**.
 
 | Job | What it runs |
 |-----|--------------|
-| `backend` | `pytest tests/` — 52 tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
+| `backend` | `pytest tests/` — 67 tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
 | `frontend-unit` | `npm run test:unit -- --coverage` — 10 Vitest tests |
 
-E2E is **not** in PR CI (needs Supabase auth credentials). Planned: nightly workflow.
+E2E is **not** in PR CI (needs Supabase auth credentials). **Nightly:** `.github/workflows/e2e-nightly.yml` (02:00 UTC + `workflow_dispatch`).
 
 **PR #1** merged 17 Jun 2026 — both jobs passed on GitHub Actions.
 
@@ -249,6 +254,8 @@ npx playwright test e2e/host-controls.spec.ts
 | 3 | `supabase/migrations/002_unify_demo.sql` | **Required for v3** — unified demo architecture |
 | 4 | `supabase/migrations/003_phase3_pitch_chips.sql` | Phase 3 Feature 1 — PC currency |
 | 5 | `supabase/migrations/004_phase3_sabotage.sql` | Phase 3 Feature 2 — sabotage shop |
+| 6 | `supabase/migrations/005_phase3_sides.sql` | Phase 3 Feature 3 — HOME/AWAY assignment |
+| 7 | `supabase/migrations/006_phase3_draft.sql` | Phase 3 Feature 4 — fantasy draft |
 | — | `supabase/fix_auth_trigger.sql` | If sign-up fails |
 
 | Table / column | Purpose |
@@ -264,6 +271,9 @@ npx playwright test e2e/host-controls.spec.ts
 | `room_players.session_pc` | Pitch Chips balance (starts at 100) |
 | `pc_transactions` | PC audit trail |
 | `sabotages` | Sabotage purchases (6 types) |
+| `room_players.assigned_side` | HOME / AWAY (Feature 3) |
+| `draft_picks` | Fantasy draft selections + PC earned (Feature 4) |
+| `rooms.draft_started_at` | Draft countdown anchor |
 | `flash_bets` / `flash_bet_answers` | Flash bet lifecycle |
 | `room_messages` | In-room chat |
 | `room_events` | Unified event log (v3) |
@@ -285,6 +295,10 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | GET/POST | `/api/rooms/{code}/flash-bets` | List / create flash bets |
 | GET | `/api/rooms/{code}/sabotages/shop` | Sabotage catalog + buyer PC |
 | GET/POST | `/api/rooms/{code}/sabotages` | List active / purchase sabotage |
+| POST | `/api/rooms/{code}/swap-side` | Spend 20 PC to swap HOME/AWAY |
+| GET | `/api/rooms/{code}/draft/squads` | Draft player pool |
+| POST | `/api/rooms/{code}/draft/pick` | Pick a player |
+| POST | `/api/rooms/{code}/start-draft` | CLOSED → DRAFTING |
 | POST | `/api/rooms/{code}/chat-toggle` | Enable/disable chat |
 | POST | `/api/rooms/{code}/kick` | Remove player |
 | POST | `/api/rooms/{code}/inject-event` | Manual event (simulation) |
@@ -315,10 +329,14 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | Flash bet UI | `frontend/src/components/FlashBetCard.tsx` |
 | Pitch Chips | `backend/services/pitch_chips.py` |
 | Sabotage shop | `backend/services/sabotages.py`, `frontend/src/components/SabotageShop.tsx` |
+| Side assignment | `backend/services/sides.py`, `frontend/src/components/SideReveal.tsx` |
+| Fantasy draft | `backend/services/draft.py`, `frontend/src/pages/RoomDraftPage.tsx` |
+| Design system | `frontend/src/styles/design-system.css`, `frontend/src/components/ui/` |
+| App layout | `frontend/src/components/layout/AppLayout.tsx` |
 | E2E helpers | `frontend/e2e/helpers.ts` |
-| Backend tests | `backend/tests/` (52 pytest tests) |
+| Backend tests | `backend/tests/` (67 pytest tests) |
 | CI workflow | `.github/workflows/test.yml` (repo root) |
-| Phase 3 migrations | `003_phase3_pitch_chips.sql`, `004_phase3_sabotage.sql` |
+| Phase 3 migrations | `003`–`006` in `supabase/migrations/` |
 
 ---
 
@@ -341,7 +359,7 @@ npm run dev
 
 ### Before testing
 
-1. Run **`phase2_migration.sql`** then **`migrations/002_unify_demo.sql`** in Supabase SQL Editor (if not on fresh schema)
+1. Run **`phase2_migration.sql`** then **`migrations/002`–`006`** in Supabase SQL Editor (if not on fresh schema)
 2. Set **`DEMO_MODE=true`** in `backend/.env` for demo sandbox
 3. Copy `backend/.env.example` → `backend/.env` and fill Supabase + Football-Data keys
 4. Restart backend after `.env` changes
@@ -351,8 +369,9 @@ npm run dev
 
 1. Log in → open **`/demo`** → **Enter demo match**
 2. Lobby → **Start predictions** → predict page
-3. Lock score → **Lock predictions** → **Go live**
-4. Live page: match events, flash bets, chat
+3. Lock score → **Lock predictions** → **Start draft** (or skip) → **Go live**
+4. Draft page: pick 3 players (60s timer) → auto go-live when timer ends
+5. Live page: match events, flash bets, sabotage shop, chat
 5. **End match** → results PP
 
 Or use host panel at `/host/:code` for inject event, chat toggle, manual flash bets.
@@ -366,38 +385,46 @@ Or use host panel at `/host/:code` for inject event, chat toggle, manual flash b
 | Real rooms need live fixture | Room create requires in-play match from Football-Data; use **demo** off-season |
 | E2E not in PR CI | Nightly: `.github/workflows/e2e-nightly.yml`; PR CI: unit tests only |
 | Branch protection | Enable in GitHub UI — require `backend` + `frontend-unit` on `main` |
+| PR merge pending | `feat/phase3-sabotage` → `main` — open compare on GitHub or `gh pr create` |
 | ESPN on Windows dev | SSL/cert issues possible; backend proxies ESPN |
-| Bracket SVG connectors | Horizontal scroll columns; no SVG lines yet |
-| `FULL_TIME` state | Not auto-set from match API; host ends from LIVE |
-| Underdog bonus (+20 PC) | Deferred to **Feature 3** (side assignment) |
-| Host message delete UI | API exists; live page doesn't expose delete button yet |
+| Real rooms need live fixture | Off-season: use **demo** or group **Watch Together → demo** |
 | Host transfer | Not implemented (`host-controls` E2E skipped) |
 | Resilience E2E | Network throttle / reconnect banner tests — planned |
+| PC win/loss toasts | Not wired to Realtime; verified via API in E2E |
 
 ---
 
-## Phase 3 — Feature 2: Sabotage shop ✅ (branch `feat/phase3-sabotage`)
+## Phase 3 — Complete on `feat/phase3-sabotage` ✅
 
-| Piece | Detail |
-|-------|--------|
-| Migration | `004_phase3_sabotage.sql` — `sabotages` table |
-| Types | BLINDFOLD, TAX, SILENCE, JINX, MIRROR, DOUBLE_OR_NOTHING (15–40 PC) |
-| Backend | `sabotages.py` — purchase, shop, silence check, flash-bet hooks |
-| Flash bets | MIRROR flips answer; JINX 2× loss; DON 3× win; BLINDFOLD masks UI |
-| Chat | SILENCE blocks messages 2 min (403 + countdown UI) |
-| Live UI | 💣 Shop bottom sheet; active-on-you indicators; realtime alert card |
-| Host panel | Lists all active sabotages in room |
-| Bots | Random sabotage purchases during demo LIVE |
-| Tests | 12 new backend + 2 frontend blindfold tests (52 + 10 total) |
+| Feature | Migration | Highlights |
+|---------|-----------|------------|
+| **1 Pitch Chips** | `003` | `session_pc`, `pc_transactions`, flash bet wagers, party board (merged to `main` via PR #2) |
+| **2 Sabotage shop** | `004` | 6 types, shop sheet, blindfold/tax/silence/jinx/mirror/DON hooks, bot purchases |
+| **3 Side assignment** | `005` | Balanced HOME/AWAY on start, `SideReveal` overlay, swap-side (20 PC), underdog +20 PC |
+| **4 Fantasy draft** | `006` | `DRAFTING` state, 60s timer, 3 picks/side, PC on drafted player goals |
+| **5 Cleanup** | — | Bracket SVG connectors, `FULL_TIME` auto-end, host room delete, nightly E2E workflow |
+
+### Commits ahead of `main` (6)
+
+```
+c70c3aa feat: Phase 3 Feature 2 - Sabotage Shop
+b89665c feat: Phase 3 Feature 3 - Side Assignment
+1913568 feat: Phase 3 Feature 4 - Fantasy Draft
+b39d39b fix: Phase 3 Feature 5 - Cleanup
+8ae5f64 feat: frontend redesign, group room creation, and E2E expansion
+4045666 test: draft reward unit tests and E2E docs tweak
+```
+
+**Open PR:** https://github.com/yshams-03/pitch-roulette/compare/main...feat/phase3-sabotage
 
 ---
 
-## Not built (Phase 3 — remaining)
+## Not built (Phase 4+)
 
-- Side assignment + reveal (Feature 3)
-- Fantasy draft (`DRAFTING` state) (Feature 4)
-- Limitations cleanup — bracket SVG, FULL_TIME auto, host delete UI (Feature 5)
-- Scouting page, push notifications, share cards (Phase 4)
+- Production deployment (Vercel + Railway + prod Supabase)
+- Scouting page, push notifications, share cards
+- Host transfer
+- Resilience E2E (network disconnect)
 
 ---
 
@@ -412,6 +439,8 @@ Or use host panel at `/host/:code` for inject event, chat toggle, manual flash b
 | Flash bet timing in E2E | `ensureOpenFlashBet` polls + API fallback |
 | Demo sandbox disabled | `DEMO_MODE` in config; `reload_settings()` in lifespan |
 | Live page black screen | Null-safe `room` on `RoomLivePage` |
+| Watch Together stub | Group detail now creates live/demo rooms with `group_id` |
+| Demo rooms missing `group_id` | `create_simulation_room` accepts `group_id` |
 | pytest not found locally | Activate `backend\venv` — not `frontend\venv` |
 | CI workflow path | `.github/workflows/` at **repo root** (`world cup/`), not `pitch-roulette/.github/` |
 
@@ -436,13 +465,17 @@ world cup/                          # git root
     │   │   ├── event_pipeline.py
     │   │   ├── pitch_chips.py
     │   │   ├── sabotages.py
-    │   │   ├── flash_bet_generator.py
+    │   │   ├── sides.py
+    │   │   ├── draft.py
     │   │   └── db_compat.py
-    │   ├── tests/                  # 52 pytest tests
+    │   ├── tests/                  # 67 pytest tests
     │   └── config.py               # DEMO_MODE, ESPN_*, MOCK_MODE
     ├── frontend/
     │   ├── e2e/                    # Playwright specs
     │   ├── src/
+    │   │   ├── styles/design-system.css
+    │   │   ├── components/ui/      # Button, Card, Stepper, CountdownRing, …
+    │   │   ├── components/layout/  # AppLayout, AuthShell
     │   │   ├── hooks/useRoomRealtime.ts
     │   │   ├── pages/RoomLivePage.tsx
     │   │   └── components/RoomChat.tsx
@@ -451,7 +484,9 @@ world cup/                          # git root
     │   ├── schema.sql
     │   ├── phase2_migration.sql
     │       ├── 003_phase3_pitch_chips.sql
-    │       └── 004_phase3_sabotage.sql
+    │       ├── 004_phase3_sabotage.sql
+    │       ├── 005_phase3_sides.sql
+    │       └── 006_phase3_draft.sql
     ├── Makefile
     └── PROGRESS.md
 ```
@@ -499,23 +534,21 @@ npm run test:unit  # 10/10 passing
 
 ---
 
-## Next up — Phase 3
+## Next up — Merge + Phase 4 deployment
 
-See **`PHASE3.md`**. Feature 1 merged; Feature 2 ready for PR on `feat/phase3-sabotage`.
+### Before merge to `main`
 
-### Now
+1. Run migrations **`003`–`006`** in Supabase SQL Editor (in order, after `002`)
+2. Open PR: [compare `main`...`feat/phase3-sabotage`](https://github.com/yshams-03/pitch-roulette/compare/main...feat/phase3-sabotage)
+3. Confirm CI green (`backend` + `frontend-unit`)
+4. Merge PR
 
-1. Run **`004_phase3_sabotage.sql`** in Supabase (after `003`)
-2. Commit + PR Feature 2 → merge to `main`
-3. Branch **`feat/phase3-sides`** for Feature 3
+### After merge — Phase 4 (production launch)
 
-### Feature 3: Side assignment (next)
+See deployment prompt when ready:
 
-- Migration `005_phase3_sides.sql`
-- Random balanced HOME/AWAY assignment on start
-- Reveal animation + underdog +20 PC bonus
-
-### Later
-
-- **Feature 4:** Fantasy draft
-- **Feature 5:** Bracket SVG, FULL_TIME auto, host delete UI, branch protection
+- **Frontend:** Vercel (`pitch-roulette/frontend`)
+- **Backend:** Railway (`pitch-roulette/backend`)
+- **Database:** Production Supabase project + all migrations
+- **Secrets:** `VITE_SUPABASE_*`, `SUPABASE_SERVICE_KEY`, `FOOTBALL_DATA_API_KEY`, E2E nightly secrets
+- **GitHub:** Branch protection on `main`; nightly E2E secrets in repo settings
