@@ -2,7 +2,7 @@
 
 **Last updated:** 17 June 2026  
 **Version:** 3.0.0 → Phase 3 in progress  
-**Status:** Phase 2 complete; **Feature 1 (Pitch Chips)** implemented locally — run migration `003` before testing
+**Status:** Phase 2 complete; **Feature 1 (Pitch Chips)** on branch `feat/phase3-pitch-chips` (commit `30f4e2e`) — open PR, merge to `main`, then start Feature 2 on `feat/phase3-sabotage`
 
 ---
 
@@ -58,12 +58,14 @@ Run **`supabase/migrations/002_unify_demo.sql`** in Supabase SQL Editor after `p
 
 - Betting window: **12s** (live rooms), **30s** (demo auto-bets)
 - 5s server grace after `locks_at` for late submissions
-- Wager tiers: LOW (0.5 PP), MEDIUM (1 PP), HIGH (2 PP)
+- Wager tiers: **LOW (5 PC), MEDIUM (10 PC), HIGH (20 PC)** — Pitch Chips, not PP (Phase 3 Feature 1)
+- Correct answer: **+wager PC** + **+0.5 PP** to profile; wrong: **−wager PC**
+- Server rejects answers when `session_pc` < wager (`insufficient_pc`)
 - Host-triggered via host panel or API
 - Auto-triggered from **ESPN `details[]`** events (goals, cards, penalties) for LIVE rooms
 - Score-delta fallback when ESPN unavailable
-- PP updates `room_players.session_pp` + `profiles.total_points`
-- UI on `/room/:code/live`: countdown card, Yes/No buttons, optimistic “Your pick”, history, session PP
+- PP updates `room_players.session_pp` + `profiles.total_points` (flash bets: +0.5 PP on correct only)
+- UI on `/room/:code/live`: countdown card, Yes/No buttons, optimistic “Your pick”, history, session PP + **🪙 PC balance**
 
 ### 3. ESPN live events ✅
 
@@ -236,6 +238,7 @@ npx playwright test e2e/host-controls.spec.ts
 | 1 | `supabase/schema.sql` | Fresh Supabase project |
 | 2 | `supabase/phase2_migration.sql` | Upgrading from Phase 1 |
 | 3 | `supabase/migrations/002_unify_demo.sql` | **Required for v3** — unified demo architecture |
+| 4 | `supabase/migrations/003_phase3_pitch_chips.sql` | **Phase 3 Feature 1** — `session_pc`, `pc_transactions` |
 | — | `supabase/fix_auth_trigger.sql` | If sign-up fails |
 
 | Table / column | Purpose |
@@ -248,11 +251,14 @@ npx playwright test e2e/host-controls.spec.ts
 | `rooms.last_seen_event_key` | Auto flash bet dedup |
 | `rooms.espn_event_id` | ESPN match cursor |
 | `room_players.session_pp` | Flash bet PP in session |
+| `room_players.session_pc` | Pitch Chips balance (starts at 100 per room) |
+| `pc_transactions` | PC audit trail (wins, losses, sabotage, bonuses) |
 | `flash_bets` / `flash_bet_answers` | Flash bet lifecycle |
 | `room_messages` | In-room chat |
 | `room_events` | Unified event log (v3) |
 
-Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`, `room_players`, `predictions` (see `schema.sql`).
+Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`, `room_players`, `predictions` (see `schema.sql`).  
+`pc_transactions` Realtime is commented in migration `003` — enable in Supabase dashboard when PC toasts are built.
 
 ---
 
@@ -271,6 +277,7 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | POST | `/api/rooms/{code}/kick` | Remove player |
 | POST | `/api/rooms/{code}/inject-event` | Manual event (simulation) |
 | POST | `/api/rooms/{code}/fast-forward` | Trigger next simulation event |
+| GET | `/api/rooms/{code}/results` | Results incl. `party_leaderboard` (PC) + skill board (PP) |
 | GET | `/api/health` | v3.0.0 health + room counts |
 | GET | `/api/demo/enabled` | `DEMO_MODE` flag |
 | POST | `/api/demo/start` | Create simulation room (compat) |
@@ -295,10 +302,14 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | Host panel | `frontend/src/pages/HostPanelPage.tsx` |
 | Chat | `frontend/src/components/RoomChat.tsx` |
 | Flash bet UI | `frontend/src/components/FlashBetCard.tsx` |
+| Pitch Chips service | `backend/services/pitch_chips.py` |
+| Results (dual boards) | `frontend/src/pages/RoomResultsPage.tsx` |
+| Phase 3 spec | `PHASE3.md` |
 | E2E helpers | `frontend/e2e/helpers.ts` |
 | Backend tests | `backend/tests/` (unit + integration, FakeSupabase) |
 | CI workflow | `.github/workflows/test.yml` (repo root) |
 | v3 migration | `supabase/migrations/002_unify_demo.sql` |
+| PC migration | `supabase/migrations/003_phase3_pitch_chips.sql` |
 
 ---
 
@@ -322,10 +333,11 @@ npm run dev
 ### Before testing
 
 1. Run **`phase2_migration.sql`** then **`migrations/002_unify_demo.sql`** in Supabase SQL Editor (if not on fresh schema)
-2. Set **`DEMO_MODE=true`** in `backend/.env` for demo sandbox
-3. Copy `backend/.env.example` → `backend/.env` and fill Supabase + Football-Data keys
-4. Restart backend after `.env` changes
-5. **Windows:** if port 8000 hangs, kill stray `python.exe` and restart a single uvicorn instance
+2. Run **`migrations/003_phase3_pitch_chips.sql`** for Pitch Chips (Feature 1)
+3. Set **`DEMO_MODE=true`** in `backend/.env` for demo sandbox
+4. Copy `backend/.env.example` → `backend/.env` and fill Supabase + Football-Data keys
+5. Restart backend after `.env` changes
+6. **Windows:** if port 8000 hangs, kill stray `python.exe` and restart a single uvicorn instance
 
 ### Demo test flow (recommended)
 
@@ -349,21 +361,43 @@ Or use host panel at `/host/:code` for inject event, chat toggle, manual flash b
 | ESPN on Windows dev | SSL/cert issues possible; backend proxies ESPN |
 | Bracket SVG connectors | Horizontal scroll columns; no SVG lines yet |
 | `FULL_TIME` state | Not auto-set from match API; host ends from LIVE |
-| Underdog bonus | Spec mentioned for flash bets — not implemented |
+| Underdog bonus (+20 PC) | Deferred to **Feature 3** (side assignment) |
+| PC Realtime toasts | `pc_transactions` table exists; frontend toasts not wired yet |
 | Host message delete UI | API exists; live page doesn't expose delete button yet |
 | Host transfer | Not implemented (`host-controls` E2E skipped) |
 | Resilience E2E | Network throttle / reconnect banner tests — planned |
 
 ---
 
-## Not built (Phase 3)
+## Phase 3 — Feature 1: Pitch Chips ✅ (PR pending)
 
-- Fantasy draft / player picks
-- Sabotage shop / Pitch Chips
-- Side assignment
-- Scouting page
-- Push notifications
-- Share cards / monetization
+**Branch:** `feat/phase3-pitch-chips` · **Commit:** `30f4e2e` · **PR:** merge to `main` before Feature 2
+
+| Piece | Detail |
+|-------|--------|
+| Concept | PC = per-room party currency (100 start); PP = permanent skill score (unchanged for predictions) |
+| Migration | `003_phase3_pitch_chips.sql` — `room_players.session_pc`, `pc_transactions` |
+| Backend | `pitch_chips.py` — balance, afford check, `adjust_pc`, flash bet resolve hooks |
+| Flash bets | Wager 5 / 10 / 20 PC; correct +wager PC + 0.5 PP; wrong −wager PC |
+| Join/create | `ensure_starting_pc` on room join; bots/match_engine seed 100 PC |
+| Live UI | 🪙 PC in header; mini-leaderboard sorted by `session_pc` |
+| Results | Dual boards: **Skill (PP)** + **Party (PC)** via `party_leaderboard` in results API |
+| Tests | Backend flash bet tests updated; 40 pytest + 8 Vitest pass locally |
+
+**Not in Feature 1:** PC win/loss Realtime toasts; underdog bonus (needs Feature 3 sides).
+
+---
+
+## Not built (Phase 3 — remaining)
+
+| Feature | Status |
+|---------|--------|
+| Sabotage shop (6 types, shop UI) | ⏳ Feature 2 — `004_phase3_sabotage.sql` |
+| Side assignment + reveal | ⏳ Feature 3 |
+| Fantasy draft (`DRAFTING` state) | ⏳ Feature 4 |
+| Limitations cleanup (bracket SVG, FULL_TIME auto, nightly E2E, host delete UI) | ⏳ Feature 5 |
+| Scouting page | Out of scope |
+| Push notifications, share cards, monetization | Phase 4 |
 
 ---
 
@@ -401,6 +435,7 @@ world cup/                          # git root
     │   │   ├── bots.py
     │   │   ├── event_pipeline.py
     │   │   ├── flash_bets.py
+    │   │   ├── pitch_chips.py
     │   │   ├── flash_bet_generator.py
     │   │   └── db_compat.py
     │   ├── tests/                  # 40 pytest tests
@@ -415,7 +450,10 @@ world cup/                          # git root
     ├── supabase/
     │   ├── schema.sql
     │   ├── phase2_migration.sql
-    │   └── migrations/002_unify_demo.sql
+    │   └── migrations/
+    │       ├── 002_unify_demo.sql
+    │       └── 003_phase3_pitch_chips.sql
+    ├── PHASE3.md
     ├── Makefile
     └── PROGRESS.md
 ```
@@ -424,23 +462,30 @@ world cup/                          # git root
 
 ## Next up — Phase 3
 
-See **`PHASE3.md`** for the full spec. Priority order: Pitch Chips → Sabotage → Sides → Draft → cleanup.
+See **`PHASE3.md`** for the checklist. Priority: Pitch Chips → Sabotage → Sides → Draft → cleanup.
 
-### Feature 1: Pitch Chips (started)
+### Now
 
-- Run **`supabase/migrations/003_phase3_pitch_chips.sql`** in Supabase
-- PC wagering on flash bets (5 / 10 / 20 PC); +0.5 PP on correct answers
-- Live page: 🪙 PC balance + party leaderboard; results: **Party board (PC)**
-- Underdog +20 PC bonus → after side assignment (Feature 3)
+1. **Merge Feature 1 PR** (`feat/phase3-pitch-chips` → `main`); confirm CI green
+2. Run **`003_phase3_pitch_chips.sql`** in Supabase before live PC testing
+3. Branch **`feat/phase3-sabotage`** from updated `main` — do not mix with Pitch Chips branch
 
-### Then
+### Feature 2: Sabotage shop (next)
 
-- **Feature 2:** Sabotage shop
-- **Feature 3:** Side assignment + reveal
+- Migration `004_phase3_sabotage.sql` — `sabotages` table + Realtime
+- Routes: `GET/POST /api/rooms/{code}/sabotages`, `GET .../sabotages/shop`
+- Flash bet hooks: JINX, MIRROR, DOUBLE_OR_NOTHING; chat SILENCE; UI BLINDFOLD
+- Shop bottom sheet on live page; demo bots buy random sabotages
+- Tests: purchase validation, effect logic, frontend shop + blindfold
+
+### Later
+
+- **Feature 3:** Side assignment + underdog +20 PC bonus
 - **Feature 4:** Fantasy draft (`DRAFTING` state)
 - **Feature 5:** Bracket SVG, FULL_TIME auto, host delete UI, branch protection
 
-### CI / E2E (already in repo)
+### CI / E2E
 
-- Nightly E2E — `.github/workflows/e2e-nightly.yml` (if present)
-- Branch protection — require `backend` + `frontend-unit` on `main` (GitHub UI)
+- PR CI: `backend` + `frontend-unit` (`.github/workflows/test.yml`)
+- Nightly E2E: `.github/workflows/e2e-nightly.yml` (on `main`, not in Feature 1 PR)
+- Branch protection — require status checks on `main` (GitHub UI)
