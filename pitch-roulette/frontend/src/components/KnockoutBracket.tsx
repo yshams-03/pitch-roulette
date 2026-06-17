@@ -92,8 +92,24 @@ export function KnockoutBracket({ matches, onCreateRoom }: Props) {
 
   return (
     <>
-      <div className="overflow-x-auto pb-4 -mx-4 px-4">
-        <div className="flex gap-6 min-w-max">
+      <div className="overflow-x-auto pb-4 -mx-4 px-4 relative">
+        <svg className="absolute inset-0 pointer-events-none w-full h-full" aria-hidden>
+          {ROUNDS.slice(0, -1).map((round, colIdx) => {
+            const x = colIdx * 200 + 176;
+            return (
+              <line
+                key={round.key}
+                x1={x}
+                y1="40"
+                x2={x + 24}
+                y2="40"
+                stroke="var(--color-border, #2A2A32)"
+                strokeWidth="2"
+              />
+            );
+          })}
+        </svg>
+        <div className="flex gap-6 min-w-max relative">
           {ROUNDS.map((round) => {
             const slots = byRound[round.key] || [];
             if (!slots.length) return null;

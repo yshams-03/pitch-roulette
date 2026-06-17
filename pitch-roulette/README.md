@@ -72,7 +72,7 @@ All standings and schedules come from **Football-Data.org** (`MOCK_MODE=false`).
 | Profile | `/profile` |
 | Friend groups | `/groups` |
 | Global leaderboard | `/leaderboard` |
-| Prediction room | `/room/:code/lobby` → `/predict` → `/live` → `/results` |
+| Prediction room | `/room/:code/lobby` → `/predict` → `/draft` → `/live` → `/results` |
 | Host panel | `/host/:code` |
 
 ## Points (PP)
@@ -86,6 +86,21 @@ All standings and schedules come from **Football-Data.org** (`MOCK_MODE=false`).
 
 `GET http://localhost:8000/api/health` — cache stats, mock mode, API status
 
-## Phase 3 (not built yet)
+## Phase 3 (on `feat/phase3-sabotage`)
 
-Fantasy draft, sabotage shop, Pitch Chips, side assignment.
+Pitch Chips (merged), Sabotage shop, Side assignment, Fantasy draft, and cleanup (bracket SVG, auto FULL_TIME, nightly E2E).
+
+Run migrations `003`–`006` in Supabase before testing.
+
+## CI / Branch protection
+
+PR CI runs `backend` + `frontend-unit` (see `.github/workflows/test.yml`).  
+Nightly E2E: `.github/workflows/e2e-nightly.yml`.
+
+To enable branch protection on `main`:
+
+1. GitHub → Settings → Branches → Add rule
+2. Branch name pattern: `main`
+3. Check: **Require status checks to pass before merging**
+4. Add checks: `backend`, `frontend-unit`
+5. Check: **Require branches to be up to date before merging**

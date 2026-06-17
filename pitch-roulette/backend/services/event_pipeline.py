@@ -308,6 +308,20 @@ async def _tick_once() -> None:
             return
         raise
 
+    for room in live_rooms:
+        if room.get("state") != "LIVE":
+            continue
+        md = room.get("match_data") or {}
+        if md.get("status") in ("FINISHED", "FT", "Full time") or md.get("status_label") == "Full time":
+            try:
+                from services.points import close_room_and_award
+                home = int(md.get("home_goals") or room.get("actual_home_goals") or 0)
+                away = int(md.get("away_goals") or room.get("actual_away_goals") or 0)
+                await close_room_and_award(room["id"], home, away)
+                logger.info("Auto-ended room %s — match finished", room.get("room_code"))
+            except Exception as exc:
+                logger.debug("auto-end skipped %s: %s", room.get("room_code"), exc)
+
     sim_rooms = []
     api_rooms = []
     for room in live_rooms:

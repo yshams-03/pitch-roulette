@@ -2,7 +2,7 @@
 
 **Last updated:** 17 June 2026  
 **Version:** 3.0.0 → Phase 3 in progress  
-**Status:** Phase 2 complete; **Feature 1** merged (PR #2); **Feature 2 (Sabotage)** on `feat/phase3-sabotage` — run migrations `003` + `004` before live testing
+**Status:** Phase 3 Features 2–5 on `feat/phase3-sabotage` — **64** pytest + **10** Vitest passing locally
 
 ---
 
