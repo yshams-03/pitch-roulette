@@ -9,9 +9,14 @@ Pitch Roulette ships as a **Vite React frontend** (Vercel) and a **FastAPI backe
 
 ## Backend (Railway)
 
-1. Create a Railway project → **Deploy from GitHub** → set root directory to `pitch-roulette/backend`
-2. Railway picks up `Dockerfile` + `railway.toml`
-3. Set environment variables (copy from `backend/.env.example`):
+**Important:** Railway must build the FastAPI app, not the repo root folder listing.
+
+### Option A — recommended
+
+1. Create a Railway project → **Deploy from GitHub**
+2. Open the service → **Settings** → **Root Directory** → set to **`pitch-roulette/backend`**
+3. Railway uses `pitch-roulette/backend/Dockerfile` + `railway.toml`
+4. Set environment variables (copy from `backend/.env.example`):
 
 | Variable | Notes |
 |----------|--------|
@@ -25,7 +30,21 @@ Pitch Roulette ships as a **Vite React frontend** (Vercel) and a **FastAPI backe
 | `MOCK_MODE` | `false` in production |
 | `DEMO_MODE` | `true` to allow demo rooms without live fixtures |
 
-4. Health check: `GET /api/health` should return `supabase_connected: true`
+### Option B — repo root (no root directory change)
+
+If Root Directory is left empty, the repo root **`Dockerfile`** + **`railway.toml`** build `pitch-roulette/backend` automatically.
+
+### Railway build troubleshooting
+
+If you see **`mise python@3.11.0`** or **Railpack could not determine how to build**:
+
+1. **Settings → Build → Builder** → select **Dockerfile** (not Railpack/Nixpacks)
+2. Set **Root Directory** to `pitch-roulette/backend` OR use repo-root `Dockerfile`
+3. Do **not** use `runtime.txt` / `Procfile` — those trigger Railpack; this project uses Docker only
+4. Push latest code (includes `railway.json` with `"builder": "DOCKERFILE"`)
+5. Optional env var: `RAILWAY_DOCKERFILE_PATH=Dockerfile`
+
+Health check: `GET /api/health` should return `supabase_connected: true`
 
 ## Frontend (Vercel)
 
