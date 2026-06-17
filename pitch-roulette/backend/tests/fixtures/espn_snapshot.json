@@ -1,0 +1,20 @@
+{
+  "id": "espn-123",
+  "espn_event_id": "espn-123",
+  "home_team": "France",
+  "away_team": "Netherlands",
+  "home_goals": 1,
+  "away_goals": 0,
+  "minute": 34,
+  "status": "1H",
+  "status_label": "Live",
+  "is_live": true,
+  "source": "espn",
+  "details": [
+    {
+      "type": "GOAL",
+      "event_key": "espn-goal-1",
+      "minute": 12
+    }
+  ]
+}
