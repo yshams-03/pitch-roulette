@@ -193,9 +193,20 @@ Requires **backend on :8000** and **frontend on :5173** (Playwright starts dev s
 
 | Spec | Coverage |
 |------|----------|
-| `e2e/demo-flow.spec.ts` | Login → demo room → predict → live → flash bet |
-| `e2e/host-controls.spec.ts` | Kick, chat toggle, flash bet, resolve, inject event |
+| `e2e/auth.spec.ts` | Login, logout, protected routes, reset password |
+| `e2e/home.spec.ts` | Standings, fixtures, bracket |
+| `e2e/groups.spec.ts` | Create/join group, leaderboard |
+| `e2e/demo-flow.spec.ts` | Full lobby → side reveal → draft → live → results |
+| `e2e/pitch-chips.spec.ts` | PC balance, flash bet tiers, party board |
+| `e2e/sabotage.spec.ts` | Shop, TAX, SILENCE/BLINDFOLD (2-browser) |
+| `e2e/side-assignment.spec.ts` | Side reveal, swap, underdog bonus |
+| `e2e/fantasy-draft.spec.ts` | Draft phase, picks, timer, bots |
+| `e2e/cleanup.spec.ts` | Bracket SVG, chat delete API, CI docs |
+| `e2e/realtime.spec.ts` | Live badge, redirects, flash bet inject |
+| `e2e/host-controls.spec.ts` | Kick, chat toggle, flash bet, resolve, inject |
 | `e2e/real-room-flow.spec.ts` | Live fixture room (skips if no in-play matches) |
+
+**69 tests** total. See `frontend/e2e/E2E_RESULTS.md` and `frontend/e2e/E2E_BUGS.md`.
 
 ```powershell
 cd pitch-roulette\frontend
@@ -443,6 +454,47 @@ world cup/                          # git root
     │       └── 004_phase3_sabotage.sql
     ├── Makefile
     └── PROGRESS.md
+```
+
+---
+
+## Frontend redesign (June 2026) ✅
+
+Visual-only overhaul — **no backend, API, or business logic changes**. All `data-testid` attributes preserved; added `data-testid="realtime-indicator"` and `data-testid="room-code"` where E2E docs noted gaps.
+
+### Design system
+
+| Asset | Path |
+|-------|------|
+| Tokens + utilities | `frontend/src/styles/design-system.css` |
+| Theme hook | `frontend/src/hooks/useTheme.ts` (`localStorage` key `pr-theme`, default dark) |
+| Layout shell | `frontend/src/components/layout/AppLayout.tsx` |
+| Auth shell | `frontend/src/components/layout/AuthShell.tsx` |
+| UI primitives | `frontend/src/components/ui/` — Button, Card, Badge, Input, Modal, BottomSheet, Spinner, Stepper, CountdownRing, Tabs, ThemeToggle, Avatar |
+
+### Brand
+
+- Electric green `#00E676`, gold `#FFD600`, party purple `#D500F9`
+- Inter + JetBrains Mono via `index.html`
+- Light/dark toggle in top nav (`ThemeToggle`)
+- Mobile bottom nav: Home | Leaderboard | Groups | Profile
+
+### Key screen updates
+
+- **Home:** LIVE hero strip, group pills, skeleton loaders, underline tabs
+- **Auth:** Centered card on grid pattern background
+- **Predict:** `Stepper` score picker, side reveal (Framer Motion spring)
+- **Draft:** `CountdownRing` (80px)
+- **Live:** Sticky score bar, flash bet purple glow + `CountdownRing`, mobile Standings/Events/Chat tabs, sabotage FAB
+- **Results:** Winner banner with staggered entrance
+- **Leaderboard:** Period tabs, desktop podium, load-more pagination
+
+### Verification
+
+```bash
+cd frontend
+npm run build      # clean
+npm run test:unit  # 10/10 passing
 ```
 
 ---

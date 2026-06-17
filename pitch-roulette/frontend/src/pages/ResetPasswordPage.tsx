@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
+import { AuthShell } from '../components/layout/AuthShell';
+import { Input } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 
 export function ResetPasswordPage() {
   const [email, setEmail] = useState('');
@@ -20,19 +23,16 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center px-4 max-w-sm mx-auto">
-      <h1 className="text-2xl font-bold text-white mb-6">Reset password</h1>
+    <AuthShell title="Reset password">
       <form onSubmit={handleReset} className="space-y-4">
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email" className="w-full min-h-11 rounded-xl bg-pitch-card border border-pitch-border px-4 text-white" />
-        <button type="submit" disabled={loading}
-          className="w-full min-h-11 rounded-xl bg-pitch-green font-bold text-pitch-black">
+        <Input type="email" required label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
           Send reset email
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-center text-sm text-pitch-muted">
-        <Link to="/auth/login" className="text-pitch-green">Back to login</Link>
+      <p className="mt-4 text-center text-sm">
+        <Link to="/auth/login" className="text-[var(--pr-green)]">Back to sign in</Link>
       </p>
-    </div>
+    </AuthShell>
   );
 }

@@ -83,6 +83,10 @@ def client(fake_db: FakeSupabase, auth_user_id: str, monkeypatch):
 
     reload_settings()
     monkeypatch.setattr("database.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("routers.rooms.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("routers.demo_compat.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.match_engine.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.event_pipeline.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.sabotages.get_supabase", lambda: fake_db)

@@ -47,6 +47,21 @@ DEMO_SQUAD: list[dict[str, Any]] = [
 _draft_timers: dict[str, asyncio.Task] = {}
 
 
+def demo_player_for_event(event_type: str) -> str | None:
+    """Pick a demo-squad player for simulated match events (draft PC rewards)."""
+    if event_type == "GOAL_HOME":
+        pool = [p for p in DEMO_SQUAD if p["team"] == "HOME" and p["position"] in ("FWD", "MID")]
+    elif event_type == "GOAL_AWAY":
+        pool = [p for p in DEMO_SQUAD if p["team"] == "AWAY" and p["position"] in ("FWD", "MID")]
+    elif event_type in ("YELLOW_CARD", "RED_CARD"):
+        pool = list(DEMO_SQUAD)
+    else:
+        return None
+    if not pool:
+        return None
+    return random.choice(pool)["player_id"]
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 

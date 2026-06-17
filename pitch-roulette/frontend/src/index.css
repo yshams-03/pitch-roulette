@@ -1,19 +1,23 @@
+@import "./styles/design-system.css";
 @import "tailwindcss";
 
 @theme {
-  --color-pitch-black: #0d0d0f;
-  --color-pitch-dark: #141417;
-  --color-pitch-card: #1a1a1f;
-  --color-pitch-border: #2a2a32;
-  --color-pitch-green: #39ff14;
-  --color-pitch-amber: #f5a623;
-  --color-pitch-red: #c0392b;
-  --color-pitch-muted: #8b8f98;
+  --color-pitch-black: var(--bg-base);
+  --color-pitch-dark: var(--bg-surface);
+  --color-pitch-card: var(--bg-surface);
+  --color-pitch-surface: var(--bg-elevated);
+  --color-pitch-border: var(--border-strong);
+  --color-pitch-green: var(--pr-green);
+  --color-pitch-amber: var(--pr-gold);
+  --color-pitch-red: var(--pr-red);
+  --color-pitch-muted: var(--text-secondary);
+  --color-pitch-blue: var(--pr-blue);
+  --color-pitch-purple: var(--pr-purple);
 
-  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-family-mono: var(--font-mono);
+  --font-family-sans: var(--font-sans);
 
-  --radius-ui: 8px;
+  --radius-ui: var(--radius-md);
 }
 
 * {
@@ -26,11 +30,11 @@ html {
 
 body {
   margin: 0;
-  font-family: var(--font-family-sans);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 16px;
   line-height: 1.5;
-  background-color: var(--color-pitch-black);
-  color: #f4f4f5;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -39,107 +43,118 @@ body {
   min-height: 100vh;
 }
 
+a {
+  color: inherit;
+}
+
+/* Legacy ui-* aliases → design system */
 @layer components {
   .ui-surface {
-    border-radius: var(--radius-ui);
-    border: 1px solid var(--color-pitch-border);
-    background-color: var(--color-pitch-card);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
   }
 
   .ui-input {
-    width: 100%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    padding: var(--space-3) var(--space-4);
+    font-size: 1rem;
     min-height: 44px;
-    border-radius: var(--radius-ui);
-    border: 1px solid var(--color-pitch-border);
-    background-color: var(--color-pitch-dark);
-    padding: 0 12px;
-    font-size: 14px;
-    color: #f4f4f5;
+    width: 100%;
+    outline: none;
+    transition: border-color var(--duration-fast);
   }
 
   .ui-input:focus {
-    outline: none;
-    border-color: #52525b;
+    border-color: var(--pr-green);
+    box-shadow: 0 0 0 3px rgba(0,230,118,0.12);
   }
 
   .ui-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: var(--space-2);
     min-height: 44px;
-    border-radius: var(--radius-ui);
-    border: 1px solid var(--color-pitch-border);
-    padding: 0 16px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #f4f4f5;
-    background: transparent;
-    transition: background-color 150ms ease, border-color 150ms ease;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    padding: 0 var(--space-5);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-overlay);
+    transition: all var(--duration-fast) var(--ease-out);
+    cursor: pointer;
   }
 
-  .ui-btn:hover {
-    background-color: var(--color-pitch-dark);
+  .ui-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
   }
 
   .ui-btn:disabled {
-    opacity: 0.5;
-    pointer-events: none;
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
   }
 
   .ui-btn-primary {
     border-color: transparent;
-    background-color: var(--color-pitch-green);
-    color: var(--color-pitch-black);
+    background: var(--pr-green);
+    color: #000;
   }
 
-  .ui-btn-primary:hover {
-    background-color: #32e612;
+  .ui-btn-primary:hover:not(:disabled) {
+    background: var(--pr-green-dim);
+    box-shadow: var(--shadow-green);
   }
 
   .ui-tab {
     position: relative;
     flex: 1;
     min-height: 44px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--color-pitch-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
     background: none;
     border: none;
     cursor: pointer;
   }
 
   .ui-tab[data-active='true'] {
-    color: #f4f4f5;
+    color: var(--text-primary);
   }
 
   .ui-tab[data-active='true']::after {
     content: '';
     position: absolute;
-    left: 16px;
-    right: 16px;
+    left: var(--space-4);
+    right: var(--space-4);
     bottom: 0;
     height: 2px;
-    background-color: var(--color-pitch-green);
+    background-color: var(--pr-green);
   }
 
   .ui-segment {
     display: flex;
     width: 100%;
-    border: 1px solid var(--color-pitch-border);
-    border-radius: var(--radius-ui);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
   .ui-segment button {
     flex: 1;
-    min-height: 32px;
-    padding: 0 12px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--color-pitch-muted);
+    min-height: 36px;
+    padding: 0 var(--space-3);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
     background: transparent;
     border: none;
-    border-right: 1px solid var(--color-pitch-border);
+    border-right: 1px solid var(--border);
   }
 
   .ui-segment button:last-child {
@@ -147,9 +162,13 @@ body {
   }
 
   .ui-segment button[data-active='true'] {
-    color: #f4f4f5;
-    background-color: var(--color-pitch-dark);
+    color: var(--text-primary);
+    background-color: var(--bg-overlay);
   }
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 @media (prefers-reduced-motion: reduce) {

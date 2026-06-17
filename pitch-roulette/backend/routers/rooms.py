@@ -45,6 +45,7 @@ from services.pitch_chips import ensure_starting_pc
 from services.room_messages import delete_message, list_messages, post_message
 from services.room_snapshot import room_snapshot as _room_snapshot
 from services.rooms_live import finalize_go_live
+from services.draft import list_picks
 from services.sabotages import silence_seconds_remaining
 from services.sides import swap_side
 
@@ -77,6 +78,7 @@ async def create_room(body: CreateRoomRequest, user_id: str = Depends(get_curren
             "demo_simulation",
             bot_json,
             phase=phase,
+            group_id=body.group_id,
         )
         return room
 
@@ -295,10 +297,12 @@ async def room_results(code: str):
     party = sorted(players, key=lambda p: -float(p.get("session_pc", 0)))
     for i, p in enumerate(party, 1):
         p["party_rank"] = i
+    draft_picks = list_picks(r["id"])
     return {
         "room": snap,
         "leaderboard": preds,
         "party_leaderboard": party,
+        "draft_picks": draft_picks,
         "actual_score": {
             "home": r.get("actual_home_goals"),
             "away": r.get("actual_away_goals"),

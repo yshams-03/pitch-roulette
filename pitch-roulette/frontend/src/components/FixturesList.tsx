@@ -52,7 +52,9 @@ function FixtureRow({
   onCreateRoom?: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)] items-center gap-1 px-3 min-h-[44px] py-2 border-t border-pitch-border first:border-t-0">
+    <div className={`grid grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,1fr)] items-center gap-1 px-3 min-h-[44px] py-2 border-t border-[var(--border)] first:border-t-0 ${
+      match.is_live ? 'bg-[rgba(0,230,118,0.04)]' : ''
+    }`}>
       <div className="flex items-center justify-end gap-1.5 min-w-0">
         <span className="text-[13px] text-white truncate text-right min-w-0">{match.home_team || 'TBD'}</span>
         <TeamCrest name={match.home_team} logo={match.home_logo} size={18} />
@@ -77,8 +79,8 @@ function DateCard({
 }) {
   if (matches.length === 0) return null;
   return (
-    <div className="ui-surface overflow-hidden">
-      <div className="border-b border-pitch-border px-3 py-2 text-sm font-medium text-white">{label}</div>
+    <div className="surface overflow-hidden">
+      <div className="sticky top-14 z-10 border-b border-[var(--border)] px-3 py-2 text-sm font-semibold bg-[var(--bg-surface)]">{label}</div>
       {matches.map((m) => (
         <FixtureRow key={m.id} match={m} onCreateRoom={onCreateRoom} />
       ))}

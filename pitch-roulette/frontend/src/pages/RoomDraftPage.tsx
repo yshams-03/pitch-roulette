@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
+import { CountdownRing } from '../components/ui/CountdownRing';
 import type { SquadPlayer } from '../../../shared/types';
 
 const POS_COLOR: Record<string, string> = {
@@ -72,13 +73,10 @@ export function RoomDraftPage() {
 
   return (
     <div className="px-4 py-6 max-w-lg mx-auto" data-testid="draft-page">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-lg font-bold text-white">Fantasy draft</h1>
-        <span className={`font-mono text-lg ${seconds < 10 ? 'text-red-400' : 'text-pitch-amber'}`}>
-          {seconds}s
-        </span>
+      <div className="flex flex-col items-center mb-6">
+        <CountdownRing seconds={seconds} total={60} size={80} />
+        <p className="text-sm text-[var(--text-secondary)] mt-3">Your picks ({myPicks}/3)</p>
       </div>
-      <p className="text-sm text-pitch-muted mb-4">Your picks: {myPicks}/3</p>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -131,7 +129,7 @@ function PlayerCard({
           data-testid="draft-pick-btn"
           disabled={disabled}
           onClick={onPick}
-          className="mt-1 text-pitch-green text-xs disabled:opacity-40"
+          className="btn btn-primary btn-sm mt-2 w-full"
         >
           Pick
         </button>

@@ -88,6 +88,11 @@ async def get_standings(competition: str = "WC") -> dict:
         return cached
 
     stale_allowed = _reject_legacy_cache(get_cached(key, allow_stale=True))
+    if settings.MOCK_MODE:
+        if stale_allowed:
+            return stale_allowed
+        return _empty_standings(competition, "mock_mode")
+
     if stale_allowed:
         asyncio.create_task(_refresh_standings(competition, key, code, season))
         return stale_allowed
@@ -122,6 +127,11 @@ async def get_matches(competition: str = "WC") -> dict:
         return cached
 
     stale_allowed = _reject_legacy_cache(get_cached(key, allow_stale=True))
+    if settings.MOCK_MODE:
+        if stale_allowed:
+            return stale_allowed
+        return _empty_schedule(competition, "mock_mode")
+
     if stale_allowed:
         asyncio.create_task(_refresh_matches(competition, key, code, season))
         return stale_allowed

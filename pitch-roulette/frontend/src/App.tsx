@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Layout } from './components/Layout';
+import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
 import { HomePage } from './pages/HomePage';
@@ -29,7 +29,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Layout>
+      <AppLayout>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/auth/login" element={<LoginPage />} />
@@ -55,9 +55,9 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Layout>
+      </AppLayout>
       <Toaster position="top-center" toastOptions={{
-        style: { background: '#1A1A1F', color: '#fff', border: '1px solid #2A2A32' },
+        style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' },
       }} />
     </BrowserRouter>
   );

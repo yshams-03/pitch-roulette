@@ -46,7 +46,12 @@ def infer_match_source(room: dict) -> MatchSource:
     if src in ("live_api", "demo_simulation", "manual"):
         return src
     match_data = room.get("match_data") or {}
-    if match_data.get("demo") or room.get("match_id") == DEMO_MATCH_ID:
+    espn_id = str(room.get("espn_event_id") or "")
+    if (
+        match_data.get("demo")
+        or room.get("match_id") == DEMO_MATCH_ID
+        or espn_id.startswith("demo-")
+    ):
         return "demo_simulation"
     return "live_api"
 
@@ -218,6 +223,10 @@ class DemoMatchSimulation(MatchSimulation):
             "at": datetime.now(timezone.utc).isoformat(),
             "source": source,
         }
+        from services.draft import demo_player_for_event
+        pid = demo_player_for_event(event_type)
+        if pid:
+            event["player_id"] = pid
         log.append(event)
         self._state["events_log"] = log[-20:]
         self._state["home_team"] = home_team
@@ -310,6 +319,12 @@ def _record_room_event(room_id: str, event: dict) -> None:
         }).execute()
     except Exception:
         pass
+    try:
+        from services.draft import process_draft_event
+        player_id = event.get("player_id") or event.get("athlete_id")
+        process_draft_event(room_id, str(event.get("type", "")), str(player_id) if player_id else None)
+    except Exception:
+        pass
 
 
 def _room_by_code(code: str) -> dict:
@@ -332,6 +347,7 @@ async def create_simulation_room(
     *,
     phase: str = "LOBBY",
     match_data: dict | None = None,
+    group_id: str | None = None,
 ) -> dict:
     from services.bots import join_bots_to_room, seed_bot_predictions
     from services.db_compat import strip_unified_fields
@@ -354,6 +370,7 @@ async def create_simulation_room(
         "bot_config_json": bot_config_json,
         "espn_event_id": DEMO_ESPN_ID,
         "host_id": host_id,
+        "group_id": group_id,
         "state": phase,
         "last_seen_event_key": None,
     })).execute().data[0]
@@ -453,6 +470,33 @@ def mark_simulation_ended(room_id: str) -> None:
     if has_unify_migration():
         update["match_simulation_json"] = data
     db.table("rooms").update(room_update_payload(update)).eq("id", room_id).execute()
+
+
+def cleanup_abandoned_live_demo_rooms(max_age_minutes: int = 30) -> int:
+    """End stale LIVE demo rooms left behind by E2E / dev sessions."""
+    from services.db_compat import fetch_live_rooms
+
+    db = get_supabase()
+    rows = fetch_live_rooms(db)
+    now = datetime.now(timezone.utc)
+    closed = 0
+    for room in rows:
+        if not is_simulation_room(room):
+            continue
+        created_raw = room.get("created_at")
+        if not created_raw:
+            continue
+        try:
+            created = datetime.fromisoformat(str(created_raw).replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if (now - created).total_seconds() < max_age_minutes * 60:
+            continue
+        db.table("rooms").update({"state": "RESULTS"}).eq("id", room["id"]).execute()
+        closed += 1
+    return closed
 
 
 def cleanup_stale_simulation_rooms() -> int:

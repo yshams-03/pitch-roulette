@@ -21,6 +21,7 @@ from services.flash_bets import (
 )
 from services.match_engine import (
     EVENT_QUESTIONS,
+    cleanup_abandoned_live_demo_rooms,
     infer_match_source,
     inject_random_event,
     is_simulation_room,
@@ -204,7 +205,11 @@ async def _process_live_api_room(room: dict, db) -> None:
         snapshot = await sports_service.get_espn_live_snapshot(str(espn_id))
 
     if snapshot.get("error"):
-        logger.warning("ESPN snapshot failed for room %s: %s", room["id"], snapshot.get("error"))
+        err = snapshot.get("error")
+        if err == "demo_match":
+            logger.debug("ESPN skipped for demo room %s", room.get("room_code"))
+            return
+        logger.warning("ESPN snapshot failed for room %s: %s", room["id"], err)
         await _process_score_fallback(room, db, fd_live)
         return
 
@@ -290,12 +295,21 @@ def _record_room_event(room_id: str, event: dict, source: str) -> None:
         }).execute()
     except Exception:
         pass
+    try:
+        from services.draft import process_draft_event
+        player_id = event.get("player_id") or event.get("athlete_id")
+        process_draft_event(room_id, str(event.get("type", "")), str(player_id) if player_id else None)
+    except Exception:
+        pass
 
 
 async def _tick_once() -> None:
     lock_expired_bets()
     try:
         cleanup_stale_simulation_rooms()
+        n = cleanup_abandoned_live_demo_rooms()
+        if n:
+            logger.info("Auto-ended %s stale LIVE demo room(s)", n)
     except APIError as e:
         if not _missing_phase2_table(e):
             logger.debug("cleanup skipped: %s", e)

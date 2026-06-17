@@ -78,8 +78,12 @@ async def advance_phase(code: str, user_id: str = Depends(get_current_user_id)):
 
     if next_state == "PREDICTING" and room["state"] == "LOBBY":
         on_predictions_opened(room["id"], room, user_id)
+        from services.sides import assign_room_sides
+        assign_room_sides(room["id"])
     if next_state == "LIVE":
         updated = go_live_simulation(room)
+        from services.sides import apply_underdog_bonus
+        apply_underdog_bonus(room["id"])
         return {"room": room_snapshot(updated)}
 
     updated = db.table("rooms").update({"state": next_state}).eq("id", room["id"]).execute().data[0]

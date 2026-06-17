@@ -4,7 +4,19 @@ import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
 import type { Profile } from '../../../shared/types';
+
+function StatCard({ label, value, gold = false }: { label: string; value: string | number; gold?: boolean }) {
+  return (
+    <Card className="p-3 text-center" lift={false}>
+      <p className={`score text-2xl ${gold ? 'text-[var(--pr-gold)]' : ''}`}>{value}</p>
+      <p className="text-xs text-[var(--text-secondary)] mt-1">{label}</p>
+    </Card>
+  );
+}
 
 export function ProfilePage() {
   const { session, signOut, setProfile } = useAuthStore();
@@ -27,7 +39,14 @@ export function ProfilePage() {
     toast.success('Profile updated');
   };
 
-  if (!profile) return <div className="p-8 text-pitch-muted">Loading...</div>;
+  if (!profile) {
+    return (
+      <div className="p-8 max-w-lg mx-auto space-y-3">
+        <div className="h-20 skeleton rounded-full w-20 mx-auto" />
+        <div className="h-32 skeleton" />
+      </div>
+    );
+  }
 
   const winRate = profile.total_predictions
     ? Math.round((profile.correct_outcomes / profile.total_predictions) * 100)
@@ -35,45 +54,30 @@ export function ProfilePage() {
 
   return (
     <div className="px-4 py-6 max-w-lg mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Avatar name={profile.display_name} color={profile.avatar_color} size="lg" />
-        <div>
-          <h1 className="text-xl font-bold text-white">{profile.display_name}</h1>
-          <p className="text-pitch-muted">@{profile.username}</p>
-          {profile.global_rank_percentile != null && (
-            <p className="text-xs text-pitch-green mt-1">
-              Top {100 - profile.global_rank_percentile}% globally
-            </p>
-          )}
-        </div>
+      <div className="flex flex-col items-center text-center mb-8">
+        <Avatar name={profile.display_name} color={profile.avatar_color} size="xl" />
+        <h1 className="text-xl font-bold mt-4">{profile.display_name}</h1>
+        <p className="text-[var(--text-secondary)]">@{profile.username}</p>
+        {profile.global_rank_percentile != null && (
+          <p className="text-xs text-[var(--pr-green)] mt-1">
+            Top {100 - profile.global_rank_percentile}% globally
+          </p>
+        )}
+        <Button variant="ghost" size="sm" className="mt-3">Edit profile</Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        {[
-          ['Total PP', profile.total_points],
-          ['Predictions', profile.total_predictions],
-          ['Win rate', `${winRate}%`],
-          ['Exact scores', profile.exact_scores],
-          ['Streak', profile.current_streak],
-          ['Best streak', profile.best_streak],
-        ].map(([label, val]) => (
-          <div key={String(label)} className="rounded-xl bg-pitch-card border border-pitch-border p-3">
-            <p className="text-xs text-pitch-muted">{label}</p>
-            <p className="text-lg font-bold text-white">{val}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+        <StatCard label="Total PP" value={profile.total_points} gold />
+        <StatCard label="Predictions" value={profile.total_predictions} />
+        <StatCard label="Correct %" value={`${winRate}%`} />
+        <StatCard label="Exact Scores" value={profile.exact_scores} />
+        <StatCard label="Current Streak 🔥" value={profile.current_streak} />
+        <StatCard label="Best Streak" value={profile.best_streak} />
       </div>
 
-      <label className="block text-sm text-pitch-muted mb-1">Display name</label>
-      <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-        className="w-full min-h-11 rounded-xl bg-pitch-card border border-pitch-border px-4 text-white mb-3" />
-      <button type="button" onClick={save} className="w-full min-h-11 rounded-xl bg-pitch-green text-pitch-black font-semibold mb-6">
-        Save
-      </button>
-
-      <button type="button" onClick={() => signOut()} className="w-full min-h-11 rounded-xl border border-pitch-red text-pitch-red">
-        Log out
-      </button>
+      <Input label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="mb-3" />
+      <Button variant="primary" fullWidth onClick={save} className="mb-4">Save</Button>
+      <Button variant="danger" fullWidth onClick={() => signOut()}>Log out</Button>
     </div>
   );
 }
@@ -87,28 +91,20 @@ export function PublicProfilePage() {
     api.publicProfile(username).then(setProfile).catch(() => toast.error('User not found'));
   }, [username]);
 
-  if (!profile) return <div className="p-8 text-pitch-muted">Loading...</div>;
+  if (!profile) return <div className="p-8 text-[var(--text-muted)]">Loading...</div>;
 
   return (
     <div className="px-4 py-6 max-w-lg mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Avatar name={String(profile.display_name)} color={String(profile.avatar_color)} size="lg" />
-        <div>
-          <h1 className="text-xl font-bold">{String(profile.display_name)}</h1>
-          <p className="text-pitch-muted">@{String(profile.username)}</p>
-        </div>
+      <div className="flex flex-col items-center text-center mb-8">
+        <Avatar name={String(profile.display_name)} color={String(profile.avatar_color)} size="xl" />
+        <h1 className="text-xl font-bold mt-4">{String(profile.display_name)}</h1>
+        <p className="text-[var(--text-secondary)]">@{String(profile.username)}</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-pitch-card p-3 border border-pitch-border">
-          <p className="text-xs text-pitch-muted">Total PP</p>
-          <p className="text-lg font-bold">{String(profile.total_points)}</p>
-        </div>
-        <div className="rounded-xl bg-pitch-card p-3 border border-pitch-border">
-          <p className="text-xs text-pitch-muted">Win rate</p>
-          <p className="text-lg font-bold">{String(profile.win_rate)}%</p>
-        </div>
+        <StatCard label="Total PP" value={String(profile.total_points)} gold />
+        <StatCard label="Win rate" value={`${String(profile.win_rate)}%`} />
       </div>
-      <Link to="/leaderboard" className="block mt-6 text-center text-pitch-green text-sm">View leaderboard</Link>
+      <Link to="/leaderboard" className="block mt-6 text-center text-[var(--pr-green)] text-sm">View leaderboard</Link>
     </div>
   );
 }

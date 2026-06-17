@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import type { Sabotage } from '../../../shared/types';
+
+const alertClass: Record<string, string> = {
+  JINX: 'sabotage-jinx',
+  SILENCE: 'sabotage-silence',
+  BLINDFOLD: 'sabotage-blindfold',
+  TAX: 'sabotage-tax',
+};
 
 interface Props {
   notification: Sabotage & { buyer_name?: string };
@@ -13,7 +21,7 @@ export function SabotageNotification({ notification, onDismiss }: Props) {
     const t = setTimeout(() => {
       setVisible(false);
       onDismiss();
-    }, 5000);
+    }, 4000);
     return () => clearTimeout(t);
   }, [onDismiss]);
 
@@ -22,24 +30,28 @@ export function SabotageNotification({ notification, onDismiss }: Props) {
   const who = notification.buyer_name || 'Someone';
   const label = notification.label || notification.sabotage_type;
   const emoji = notification.emoji || '💣';
+  const typeClass = alertClass[notification.sabotage_type] || 'sabotage-tax';
 
   return (
-    <div
+    <motion.div
       data-testid="sabotage-notification"
-      className="fixed top-20 left-4 right-4 z-50 mx-auto max-w-sm animate-in slide-in-from-top duration-300"
+      className="fixed top-20 left-4 right-4 z-50 mx-auto max-w-sm"
+      initial={{ opacity: 0, x: 60 }}
+      animate={{ opacity: 1, x: 0, transition: { type: 'spring', stiffness: 400, damping: 30 } }}
+      exit={{ opacity: 0, x: 60 }}
     >
-      <div className="rounded-xl bg-red-600/95 border border-red-400 px-4 py-3 text-white shadow-lg">
+      <div className={`rounded-[var(--radius-lg)] px-4 py-3 shadow-lg ${typeClass}`}>
         <p className="text-sm font-semibold">
           {emoji} {who} hit you with {label}!
         </p>
         <button
           type="button"
           onClick={() => { setVisible(false); onDismiss(); }}
-          className="text-xs text-red-100 mt-1 underline"
+          className="text-xs mt-1 underline opacity-80 bg-transparent border-0 cursor-pointer"
         >
           Dismiss
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

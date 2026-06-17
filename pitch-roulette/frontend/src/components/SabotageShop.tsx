@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api, ApiError } from '../lib/api';
 import { Avatar } from './Avatar';
+import { BottomSheet } from './ui/BottomSheet';
+import { Button } from './ui/Button';
 import type { RoomPlayer, Sabotage, SabotageShopItem } from '../../../shared/types';
 
 interface Props {
@@ -19,8 +21,10 @@ export function SabotageShop({ code, token, players, userId, sessionPc, onPurcha
   const [balance, setBalance] = useState(sessionPc);
   const [targetingMe, setTargetingMe] = useState<Sabotage[]>([]);
   const [buying, setBuying] = useState<string | null>(null);
+  const [expandedTarget, setExpandedTarget] = useState<string | null>(null);
 
   const targets = players.filter((p) => p.user_id !== userId);
+  const canAffordAny = catalog.some((item) => balance >= item.pc_cost);
 
   const load = useCallback(async () => {
     try {
@@ -52,7 +56,6 @@ export function SabotageShop({ code, token, players, userId, sessionPc, onPurcha
       await api.purchaseSabotage(token, code, type, target.user_id);
       const item = catalog.find((c) => c.type === type);
       toast.success(`💣 ${item?.label || type} sent to ${target.display_name || 'player'}!`);
-      setOpen(false);
       onPurchased();
       load();
     } catch (e) {
@@ -75,83 +78,87 @@ export function SabotageShop({ code, token, players, userId, sessionPc, onPurcha
         type="button"
         data-testid="sabotage-shop-btn"
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-30 min-h-11 px-4 rounded-full bg-pitch-amber/90 text-pitch-black font-semibold text-sm shadow-lg border border-pitch-amber"
+        className={`fixed bottom-24 right-4 z-30 min-h-12 min-w-12 px-4 rounded-full btn-purple font-semibold text-sm shadow-lg ${
+          canAffordAny ? 'animate-pulse' : ''
+        }`}
       >
         💣 Shop
+        {targetingMe.length > 0 && (
+          <span className="absolute -top-1 -right-1 bg-[var(--pr-red)] text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+            {targetingMe.length}
+          </span>
+        )}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60" onClick={() => setOpen(false)}>
-          <div
-            data-testid="sabotage-shop-sheet"
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl bg-pitch-surface border border-pitch-border p-4 pb-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">💣 Sabotage Shop</h2>
-              <button type="button" onClick={() => setOpen(false)} className="text-pitch-muted text-sm">Close</button>
-            </div>
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="💣 Sabotage Shop">
+        <div data-testid="sabotage-shop-sheet">
+          <p className="pc-chip mb-4" data-testid="shop-pc-balance">
+            🪙 {balance} PC
+          </p>
 
-            <p className="text-sm text-pitch-amber mb-4" data-testid="shop-pc-balance">
-              Your balance: 🪙 {balance} PC
-            </p>
-
-            {targetingMe.length > 0 && (
-              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                <p className="text-xs text-pitch-muted uppercase mb-2">Active on you</p>
-                <div className="flex flex-wrap gap-2">
-                  {targetingMe.map((s) => (
-                    <span key={s.id} className="text-xs px-2 py-1 rounded-full bg-pitch-card text-white">
-                      {s.emoji || '💣'} {s.label || s.sabotage_type}
-                    </span>
-                  ))}
-                </div>
+          {targetingMe.length > 0 && (
+            <div className="mb-4 p-3 rounded-[var(--radius-md)] bg-[rgba(255,23,68,0.1)] border border-[rgba(255,23,68,0.25)]">
+              <p className="text-xs text-[var(--text-secondary)] uppercase mb-2 font-semibold">Active on you</p>
+              <div className="flex flex-wrap gap-2">
+                {targetingMe.map((s) => (
+                  <span key={s.id} className="badge badge-purple">
+                    {s.emoji || '💣'} {s.label || s.sabotage_type}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            <p className="text-xs text-pitch-muted uppercase mb-2">Pick a target</p>
-            <div className="space-y-4">
-              {targets.map((target) => (
-                <div key={target.user_id} className="rounded-lg border border-pitch-border p-3">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Avatar name={target.display_name || '?'} color={target.avatar_color} size="sm" />
-                    <span className="text-sm text-white font-medium">{target.display_name}</span>
-                  </div>
-                  <div className="grid gap-2">
+          <div className="space-y-2">
+            {targets.map((target) => (
+              <div key={target.user_id} className="surface p-3">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full bg-transparent border-0 cursor-pointer p-0"
+                  onClick={() => setExpandedTarget(expandedTarget === target.user_id ? null : target.user_id)}
+                >
+                  <Avatar name={target.display_name || '?'} color={target.avatar_color} size="sm" />
+                  <span className="text-sm font-medium flex-1 text-left">{target.display_name}</span>
+                  <span className="text-xs text-[var(--text-muted)]">{expandedTarget === target.user_id ? '▲' : '▼'}</span>
+                </button>
+                {expandedTarget === target.user_id && (
+                  <div className="grid gap-2 mt-3">
                     {catalog.map((item) => {
                       const afford = balance >= item.pc_cost;
                       const busy = buying === `${item.type}-${target.user_id}`;
                       return (
-                        <button
+                        <div
                           key={`${target.user_id}-${item.type}`}
-                          type="button"
-                          data-testid={`buy-${item.type}`}
-                          disabled={!afford || !!buying}
-                          onClick={() => buy(item.type, target)}
-                          className={`text-left rounded-lg px-3 py-2 text-sm border transition-colors ${
-                            afford
-                              ? 'border-pitch-border bg-pitch-card hover:border-pitch-amber text-white'
-                              : 'border-pitch-border/50 bg-pitch-card/50 text-pitch-muted cursor-not-allowed'
-                          }`}
+                          className="flex items-center justify-between gap-2 p-2 rounded-[var(--radius-md)] bg-[var(--bg-overlay)]"
                         >
-                          <span className="font-medium">{item.emoji} {item.label}</span>
-                          <span className="text-pitch-amber ml-2">{item.pc_cost} PC</span>
-                          <p className="text-xs text-pitch-muted mt-0.5">{item.description}</p>
-                          {busy && <span className="text-xs text-pitch-green">Buying…</span>}
-                        </button>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{item.emoji} {item.label}</p>
+                            <p className="text-xs text-[var(--text-muted)]">{item.description}</p>
+                          </div>
+                          <Button
+                            variant="purple"
+                            size="sm"
+                            data-testid={`buy-${item.type}`}
+                            disabled={!afford || !!buying}
+                            loading={busy}
+                            onClick={() => buy(item.type, target)}
+                          >
+                            {item.pc_cost} 🪙
+                          </Button>
+                        </div>
                       );
                     })}
                   </div>
-                </div>
-              ))}
-            </div>
-
-            {targets.length === 0 && (
-              <p className="text-sm text-pitch-muted text-center py-4">No other players to target.</p>
-            )}
+                )}
+              </div>
+            ))}
           </div>
+
+          {targets.length === 0 && (
+            <p className="text-sm text-[var(--text-muted)] text-center py-4">No other players to target.</p>
+          )}
         </div>
-      )}
+      </BottomSheet>
     </>
   );
 }
