@@ -12,10 +12,11 @@ import { MatchEventsPanel, eventLabel } from '../components/MatchEventsPanel';
 import { ReactionOverlay } from '../components/ReactionOverlay';
 import { RoomChat } from '../components/RoomChat';
 import { RoomConnectionBadge } from '../components/RoomConnectionBadge';
-import { TeamCrest } from '../components/TeamCrest';
+import { SabotageShop } from '../components/SabotageShop';
+import { SabotageNotification } from '../components/SabotageNotification';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
-import type { FlashBet, FlashBetAnswer, MatchEventLog, RoomPlayer } from '../../../shared/types';
+import type { FlashBet, FlashBetAnswer, MatchEventLog, RoomPlayer, Sabotage } from '../../../shared/types';
 
 export function RoomLivePage() {
   const { code } = useParams<{ code: string }>();
@@ -24,6 +25,9 @@ export function RoomLivePage() {
   useRoomRedirect(code, room?.state, 'live');
   const [bets, setBets] = useState<FlashBet[]>([]);
   const [answers, setAnswers] = useState<FlashBetAnswer[]>([]);
+  const [targetingMe, setTargetingMe] = useState<Sabotage[]>([]);
+  const [sabotageAlert, setSabotageAlert] = useState<(Sabotage & { buyer_name?: string }) | null>(null);
+  const [silenceSecs, setSilenceSecs] = useState(0);
 
   useEffect(() => {
     if (!session || !code || !room || !userId) return;
@@ -40,6 +44,63 @@ export function RoomLivePage() {
   }, [code]);
 
   useEffect(() => { loadBets(); }, [loadBets]);
+
+  const loadSabotages = useCallback(async () => {
+    if (!session || !code) return;
+    try {
+      const r = await api.listSabotages(session.access_token, code);
+      const active = (r.targeting_me as Sabotage[]) || [];
+      setTargetingMe(active);
+      const silence = active.find((s) => s.sabotage_type === 'SILENCE');
+      if (silence?.expires_at) {
+        const rem = Math.max(0, Math.ceil((new Date(silence.expires_at).getTime() - Date.now()) / 1000));
+        setSilenceSecs(rem);
+      } else {
+        setSilenceSecs(0);
+      }
+    } catch { /* ignore */ }
+  }, [session, code]);
+
+  useEffect(() => {
+    if (!session || !code || room?.state !== 'LIVE') return;
+    loadSabotages();
+  }, [session, code, room?.state, loadSabotages]);
+
+  useEffect(() => {
+    if (silenceSecs <= 0) return;
+    const id = setInterval(() => {
+      setSilenceSecs((s) => {
+        if (s <= 1) {
+          loadSabotages();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [silenceSecs, loadSabotages]);
+
+  useEffect(() => {
+    if (!supabase || !room?.id || !userId) return;
+    const roomId = room.id;
+    const ch = supabase
+      .channel(`sabotage-${roomId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sabotages', filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          const row = payload.new as Sabotage;
+          if (row.target_id !== userId) return;
+          if (row.sabotage_type === 'MIRROR') return;
+          const buyer = players.find((p) => p.user_id === row.buyer_id);
+          setSabotageAlert({ ...row, buyer_name: buyer?.display_name });
+          loadSabotages();
+          refresh();
+        },
+      )
+      .subscribe();
+    return () => { if (supabase) supabase.removeChannel(ch); };
+  }, [room?.id, userId, players, loadSabotages, refresh]);
 
   // Realtime can miss updates — poll while live (especially demo auto-events).
   useEffect(() => {
@@ -124,8 +185,16 @@ export function RoomLivePage() {
     (a, b) => (b.session_pc ?? 0) - (a.session_pc ?? 0),
   );
 
+  const blindfolded = targetingMe.some((s) => s.sabotage_type === 'BLINDFOLD');
+
   return (
     <div className="px-4 py-6 max-w-lg mx-auto relative">
+      {sabotageAlert && (
+        <SabotageNotification
+          notification={sabotageAlert}
+          onDismiss={() => setSabotageAlert(null)}
+        />
+      )}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <p className="font-mono text-pitch-green">{room.room_code}</p>
@@ -188,6 +257,7 @@ export function RoomLivePage() {
           code={code!}
           token={session.access_token}
           myAnswer={myAnswer}
+          blindfolded={blindfolded}
           onAnswered={() => {
             loadBets();
             if (code && activeBet) {
@@ -196,6 +266,7 @@ export function RoomLivePage() {
               }).catch(() => {});
             }
             refresh();
+            loadSabotages();
           }}
         />
       )}
@@ -252,11 +323,23 @@ export function RoomLivePage() {
 
       <ReactionOverlay roomId={room.id} userId={userId!} />
 
+      {room.state === 'LIVE' && (
+        <SabotageShop
+          code={code!}
+          token={session.access_token}
+          players={players}
+          userId={userId!}
+          sessionPc={mySessionPc}
+          onPurchased={() => { refresh(); loadSabotages(); }}
+        />
+      )}
+
       <RoomChat
         roomId={room.id}
         code={code!}
         token={session.access_token}
         enabled={room.chat_enabled !== false}
+        silencedSeconds={silenceSecs}
       />
 
       {isHost && (

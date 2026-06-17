@@ -34,9 +34,10 @@ interface Props {
   token: string;
   myAnswer?: FlashBetAnswer;
   onAnswered: () => void;
+  blindfolded?: boolean;
 }
 
-export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) {
+export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfolded }: Props) {
   const options = useMemo(() => parseOptions(bet.options), [bet.options]);
   const totalSeconds = useMemo(() => windowSeconds(bet), [bet]);
   const [remaining, setRemaining] = useState(() => secondsLeft(bet.locks_at));
@@ -132,7 +133,8 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
       )}
 
       <div className="grid gap-2">
-        {options.map((opt) => {
+        {options.map((opt, i) => {
+          const display = blindfolded && open && !answered ? '???' : opt;
           const chosen = answered === opt;
           const correct = resolved && bet.correct_option === opt;
           const wrong = resolved && chosen && !correct;
@@ -141,6 +143,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
             <button
               key={opt}
               type="button"
+              data-testid={blindfolded && open ? `blindfold-option-${i}` : undefined}
               disabled={!canPick}
               onClick={() => pick(opt)}
               className={`min-h-11 rounded-lg px-3 text-sm font-medium transition-colors ${
@@ -152,7 +155,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
                     : 'bg-pitch-card border border-pitch-border text-pitch-muted'
               }`}
             >
-              {opt}
+              {display}
               {(locked || resolved) && results[opt] != null && (
                 <span className="ml-2 text-xs text-pitch-muted">({results[opt]})</span>
               )}

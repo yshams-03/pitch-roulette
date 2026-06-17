@@ -1,3 +1,5 @@
+import type { Sabotage, SabotageShopItem } from '../../../shared/types';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 export class ApiError extends Error {
@@ -146,6 +148,22 @@ export const api = {
     }),
   kickPlayer: (token: string, code: string, user_id: string) =>
     request(`/api/rooms/${code}/kick`, token, { method: 'POST', body: JSON.stringify({ user_id }) }),
+
+  sabotageShop: (token: string, code: string) =>
+    request<{ catalog: SabotageShopItem[]; session_pc: number; room_state: string }>(
+      `/api/rooms/${code}/sabotages/shop`,
+      token,
+    ),
+  listSabotages: (token: string, code: string) =>
+    request<{ targeting_me: Sabotage[]; room_active: Sabotage[]; is_host: boolean }>(
+      `/api/rooms/${code}/sabotages`,
+      token,
+    ),
+  purchaseSabotage: (token: string, code: string, sabotage_type: string, target_user_id: string) =>
+    request<Sabotage>(`/api/rooms/${code}/sabotages`, token, {
+      method: 'POST',
+      body: JSON.stringify({ sabotage_type, target_user_id }),
+    }),
 
   fastForward: (token: string, code: string) =>
     request(`/api/rooms/${code}/fast-forward`, token, { method: 'POST', body: '{}' }),

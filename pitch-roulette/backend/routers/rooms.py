@@ -44,6 +44,7 @@ from services.points import actual_outcome, close_room_and_award
 from services.pitch_chips import ensure_starting_pc
 from services.room_messages import delete_message, list_messages, post_message
 from services.room_snapshot import room_snapshot as _room_snapshot
+from services.sabotages import silence_seconds_remaining
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -414,7 +415,20 @@ async def send_message(code: str, body: RoomMessageRequest, user_id: str = Depen
     try:
         return post_message(r["id"], user_id, body.content)
     except ValueError as e:
-        raise HTTPException(400, detail={"error": str(e)})
+        err = str(e)
+        if err == "silenced":
+            secs = silence_seconds_remaining(r["id"], user_id)
+            db = get_supabase()
+            rows = db.table("sabotages").select("expires_at").eq("room_id", r["id"]).eq(
+                "target_id", user_id
+            ).eq("sabotage_type", "SILENCE").eq("state", "ACTIVE").execute().data or []
+            expires_at = rows[0].get("expires_at") if rows else None
+            raise HTTPException(403, detail={
+                "error": "silenced",
+                "seconds_remaining": secs,
+                "expires_at": expires_at,
+            })
+        raise HTTPException(400, detail={"error": err})
 
 
 @router.delete("/{code}/messages/{message_id}")

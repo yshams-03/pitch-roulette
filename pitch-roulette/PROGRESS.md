@@ -2,7 +2,7 @@
 
 **Last updated:** 17 June 2026  
 **Version:** 3.0.0 → Phase 3 in progress  
-**Status:** Phase 2 complete; **Feature 1 (Pitch Chips)** implemented locally — run migration `003` before testing
+**Status:** Phase 2 complete; **Feature 1** merged (PR #2); **Feature 2 (Sabotage)** on `feat/phase3-sabotage` — run migrations `003` + `004` before live testing
 
 ---
 
@@ -147,8 +147,8 @@ Runs on every **push to `main`** and **pull request to `main`**.
 
 | Job | What it runs |
 |-----|--------------|
-| `backend` | `pytest tests/` — 40 tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
-| `frontend-unit` | `npm run test:unit -- --coverage` — 8 Vitest tests |
+| `backend` | `pytest tests/` — 52 tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
+| `frontend-unit` | `npm run test:unit -- --coverage` — 10 Vitest tests |
 
 E2E is **not** in PR CI (needs Supabase auth credentials). Planned: nightly workflow.
 
@@ -236,6 +236,8 @@ npx playwright test e2e/host-controls.spec.ts
 | 1 | `supabase/schema.sql` | Fresh Supabase project |
 | 2 | `supabase/phase2_migration.sql` | Upgrading from Phase 1 |
 | 3 | `supabase/migrations/002_unify_demo.sql` | **Required for v3** — unified demo architecture |
+| 4 | `supabase/migrations/003_phase3_pitch_chips.sql` | Phase 3 Feature 1 — PC currency |
+| 5 | `supabase/migrations/004_phase3_sabotage.sql` | Phase 3 Feature 2 — sabotage shop |
 | — | `supabase/fix_auth_trigger.sql` | If sign-up fails |
 
 | Table / column | Purpose |
@@ -248,6 +250,9 @@ npx playwright test e2e/host-controls.spec.ts
 | `rooms.last_seen_event_key` | Auto flash bet dedup |
 | `rooms.espn_event_id` | ESPN match cursor |
 | `room_players.session_pp` | Flash bet PP in session |
+| `room_players.session_pc` | Pitch Chips balance (starts at 100) |
+| `pc_transactions` | PC audit trail |
+| `sabotages` | Sabotage purchases (6 types) |
 | `flash_bets` / `flash_bet_answers` | Flash bet lifecycle |
 | `room_messages` | In-room chat |
 | `room_events` | Unified event log (v3) |
@@ -267,6 +272,8 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | POST | `/api/rooms/{code}/go-live` | CLOSED → LIVE |
 | POST | `/api/rooms/{code}/end` | LIVE → RESULTS + award PP |
 | GET/POST | `/api/rooms/{code}/flash-bets` | List / create flash bets |
+| GET | `/api/rooms/{code}/sabotages/shop` | Sabotage catalog + buyer PC |
+| GET/POST | `/api/rooms/{code}/sabotages` | List active / purchase sabotage |
 | POST | `/api/rooms/{code}/chat-toggle` | Enable/disable chat |
 | POST | `/api/rooms/{code}/kick` | Remove player |
 | POST | `/api/rooms/{code}/inject-event` | Manual event (simulation) |
@@ -295,10 +302,12 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | Host panel | `frontend/src/pages/HostPanelPage.tsx` |
 | Chat | `frontend/src/components/RoomChat.tsx` |
 | Flash bet UI | `frontend/src/components/FlashBetCard.tsx` |
+| Pitch Chips | `backend/services/pitch_chips.py` |
+| Sabotage shop | `backend/services/sabotages.py`, `frontend/src/components/SabotageShop.tsx` |
 | E2E helpers | `frontend/e2e/helpers.ts` |
-| Backend tests | `backend/tests/` (unit + integration, FakeSupabase) |
+| Backend tests | `backend/tests/` (52 pytest tests) |
 | CI workflow | `.github/workflows/test.yml` (repo root) |
-| v3 migration | `supabase/migrations/002_unify_demo.sql` |
+| Phase 3 migrations | `003_phase3_pitch_chips.sql`, `004_phase3_sabotage.sql` |
 
 ---
 
@@ -349,21 +358,35 @@ Or use host panel at `/host/:code` for inject event, chat toggle, manual flash b
 | ESPN on Windows dev | SSL/cert issues possible; backend proxies ESPN |
 | Bracket SVG connectors | Horizontal scroll columns; no SVG lines yet |
 | `FULL_TIME` state | Not auto-set from match API; host ends from LIVE |
-| Underdog bonus | Spec mentioned for flash bets — not implemented |
+| Underdog bonus (+20 PC) | Deferred to **Feature 3** (side assignment) |
 | Host message delete UI | API exists; live page doesn't expose delete button yet |
 | Host transfer | Not implemented (`host-controls` E2E skipped) |
 | Resilience E2E | Network throttle / reconnect banner tests — planned |
 
 ---
 
-## Not built (Phase 3)
+## Phase 3 — Feature 2: Sabotage shop ✅ (branch `feat/phase3-sabotage`)
 
-- Fantasy draft / player picks
-- Sabotage shop / Pitch Chips
-- Side assignment
-- Scouting page
-- Push notifications
-- Share cards / monetization
+| Piece | Detail |
+|-------|--------|
+| Migration | `004_phase3_sabotage.sql` — `sabotages` table |
+| Types | BLINDFOLD, TAX, SILENCE, JINX, MIRROR, DOUBLE_OR_NOTHING (15–40 PC) |
+| Backend | `sabotages.py` — purchase, shop, silence check, flash-bet hooks |
+| Flash bets | MIRROR flips answer; JINX 2× loss; DON 3× win; BLINDFOLD masks UI |
+| Chat | SILENCE blocks messages 2 min (403 + countdown UI) |
+| Live UI | 💣 Shop bottom sheet; active-on-you indicators; realtime alert card |
+| Host panel | Lists all active sabotages in room |
+| Bots | Random sabotage purchases during demo LIVE |
+| Tests | 12 new backend + 2 frontend blindfold tests (52 + 10 total) |
+
+---
+
+## Not built (Phase 3 — remaining)
+
+- Side assignment + reveal (Feature 3)
+- Fantasy draft (`DRAFTING` state) (Feature 4)
+- Limitations cleanup — bracket SVG, FULL_TIME auto, host delete UI (Feature 5)
+- Scouting page, push notifications, share cards (Phase 4)
 
 ---
 
@@ -400,10 +423,11 @@ world cup/                          # git root
     │   │   ├── match_engine.py
     │   │   ├── bots.py
     │   │   ├── event_pipeline.py
-    │   │   ├── flash_bets.py
+    │   │   ├── pitch_chips.py
+    │   │   ├── sabotages.py
     │   │   ├── flash_bet_generator.py
     │   │   └── db_compat.py
-    │   ├── tests/                  # 40 pytest tests
+    │   ├── tests/                  # 52 pytest tests
     │   └── config.py               # DEMO_MODE, ESPN_*, MOCK_MODE
     ├── frontend/
     │   ├── e2e/                    # Playwright specs
@@ -415,7 +439,8 @@ world cup/                          # git root
     ├── supabase/
     │   ├── schema.sql
     │   ├── phase2_migration.sql
-    │   └── migrations/002_unify_demo.sql
+    │       ├── 003_phase3_pitch_chips.sql
+    │       └── 004_phase3_sabotage.sql
     ├── Makefile
     └── PROGRESS.md
 ```
@@ -424,23 +449,21 @@ world cup/                          # git root
 
 ## Next up — Phase 3
 
-See **`PHASE3.md`** for the full spec. Priority order: Pitch Chips → Sabotage → Sides → Draft → cleanup.
+See **`PHASE3.md`**. Feature 1 merged; Feature 2 ready for PR on `feat/phase3-sabotage`.
 
-### Feature 1: Pitch Chips (started)
+### Now
 
-- Run **`supabase/migrations/003_phase3_pitch_chips.sql`** in Supabase
-- PC wagering on flash bets (5 / 10 / 20 PC); +0.5 PP on correct answers
-- Live page: 🪙 PC balance + party leaderboard; results: **Party board (PC)**
-- Underdog +20 PC bonus → after side assignment (Feature 3)
+1. Run **`004_phase3_sabotage.sql`** in Supabase (after `003`)
+2. Commit + PR Feature 2 → merge to `main`
+3. Branch **`feat/phase3-sides`** for Feature 3
 
-### Then
+### Feature 3: Side assignment (next)
 
-- **Feature 2:** Sabotage shop
-- **Feature 3:** Side assignment + reveal
-- **Feature 4:** Fantasy draft (`DRAFTING` state)
+- Migration `005_phase3_sides.sql`
+- Random balanced HOME/AWAY assignment on start
+- Reveal animation + underdog +20 PC bonus
+
+### Later
+
+- **Feature 4:** Fantasy draft
 - **Feature 5:** Bracket SVG, FULL_TIME auto, host delete UI, branch protection
-
-### CI / E2E (already in repo)
-
-- Nightly E2E — `.github/workflows/e2e-nightly.yml` (if present)
-- Branch protection — require `backend` + `frontend-unit` on `main` (GitHub UI)

@@ -240,14 +240,17 @@ def pick_flash_bet_option(
 
 
 def answer_open_flash_bet(room: dict, open_bet: dict, host_id: str) -> list[dict]:
-    db = get_supabase()
+    from services.flash_bets import submit_answer
+
     options = open_bet.get("options") or ["Yes", "No"]
     if not isinstance(options, list):
         options = ["Yes", "No"]
     event_type = open_bet.get("match_event_type")
     answers = []
+    code = room.get("room_code", "")
     for bot in bots_for_room(room, host_id):
         uid = bot["id"]
+        db = get_supabase()
         member = db.table("room_players").select("id").eq(
             "room_id", room["id"]
         ).eq("user_id", uid).execute()
@@ -259,11 +262,9 @@ def answer_open_flash_bet(room: dict, open_bet: dict, host_id: str) -> list[dict
         if existing.data:
             continue
         choice = pick_flash_bet_option(bot, options, open_bet["id"], event_type)
-        row = db.table("flash_bet_answers").insert({
-            "flash_bet_id": open_bet["id"],
-            "room_id": room["id"],
-            "user_id": uid,
-            "chosen_option": choice,
-        }).execute().data[0]
-        answers.append({**row, "display_name": bot.get("display_name")})
+        try:
+            row = submit_answer(code, open_bet["id"], uid, choice)
+            answers.append({**row, "display_name": bot.get("display_name")})
+        except (ValueError, PermissionError) as exc:
+            logger.debug("bot flash answer skipped %s: %s", uid, exc)
     return answers

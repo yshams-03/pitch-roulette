@@ -187,6 +187,41 @@ export interface FlashBetAnswer {
   display_name?: string;
 }
 
+export type SabotageType =
+  | 'BLINDFOLD'
+  | 'TAX'
+  | 'SILENCE'
+  | 'JINX'
+  | 'MIRROR'
+  | 'DOUBLE_OR_NOTHING';
+
+export type SabotageState = 'ACTIVE' | 'TRIGGERED' | 'EXPIRED';
+
+export interface SabotageShopItem {
+  type: SabotageType;
+  label: string;
+  emoji: string;
+  pc_cost: number;
+  description: string;
+  duration?: string;
+}
+
+export interface Sabotage {
+  id: string;
+  room_id: string;
+  buyer_id: string;
+  target_id: string;
+  sabotage_type: SabotageType;
+  pc_cost: number;
+  state: SabotageState;
+  flash_bet_id?: string | null;
+  purchased_at: string;
+  triggered_at?: string | null;
+  expires_at?: string | null;
+  label?: string;
+  emoji?: string;
+}
+
 export interface RoomMessage {
   id: string;
   room_id: string;

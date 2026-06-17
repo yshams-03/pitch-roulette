@@ -67,6 +67,7 @@ def fake_db() -> FakeSupabase:
     db.seed("predictions", [])
     db.seed("room_messages", [])
     db.seed("pc_transactions", [])
+    db.seed("sabotages", [])
     return db
 
 
@@ -82,6 +83,8 @@ def client(fake_db: FakeSupabase, auth_user_id: str, monkeypatch):
     reload_settings()
     monkeypatch.setattr("database.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.sabotages.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.room_snapshot.get_supabase", lambda: fake_db)
 
     from auth import get_current_user_id

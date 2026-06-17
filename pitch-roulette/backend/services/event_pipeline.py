@@ -138,6 +138,9 @@ def _process_simulation_room(room: dict) -> None:
                 logger.debug("resolve skipped %s: %s", code, e)
         return
 
+    from services.sabotages import maybe_bot_purchase_sabotage
+    maybe_bot_purchase_sabotage(room)
+
     if infer_match_source(room) != "demo_simulation":
         return
 

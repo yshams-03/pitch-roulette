@@ -1,6 +1,6 @@
 # Pitch Roulette — Phase 3 Specification
 
-**Status:** In progress (Feature 1: Pitch Chips)  
+**Status:** In progress (Feature 2: Sabotage shop)  
 **Base:** v3.0.0 on `main`  
 **Priority order:** Pitch Chips → Sabotage → Side assignment → Fantasy draft → Limitations cleanup
 
@@ -10,8 +10,8 @@ See the full feature spec in the agent prompt (June 2026). This file tracks impl
 
 | # | Feature | Status |
 |---|---------|--------|
-| 1 | Pitch Chips (PC) currency | ✅ Core done (migration 003, PC wagering, UI) |
-| 2 | Sabotage shop | ⏳ Pending |
+| 1 | Pitch Chips (PC) currency | ✅ Merged (PR #2) |
+| 2 | Sabotage shop | ✅ Core done (migration 004, shop UI, flash-bet hooks) |
 | 3 | Side assignment | ⏳ Pending |
 | 4 | Fantasy draft | ⏳ Pending |
 | 5 | Limitations cleanup (bracket SVG, FULL_TIME auto, nightly E2E, host delete, branch protection) | ⏳ Pending |
@@ -21,7 +21,7 @@ See the full feature spec in the agent prompt (June 2026). This file tracks impl
 | File | Purpose |
 |------|---------|
 | `supabase/migrations/003_phase3_pitch_chips.sql` | `session_pc`, `pc_transactions` |
-| `004_phase3_sabotage.sql` | (planned) `sabotages` |
+| `004_phase3_sabotage.sql` | `sabotages` table + Realtime |
 | `005_phase3_sides.sql` | (planned) `assigned_side`, `side_swap_used` |
 | `006_phase3_draft.sql` | (planned) `DRAFTING` state, `draft_picks` |
 

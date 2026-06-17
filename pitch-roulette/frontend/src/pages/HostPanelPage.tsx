@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { isSimulationRoom } from '../lib/roomUtils';
-import type { FlashBet, RoomPlayer } from '../../../shared/types';
+import type { FlashBet, RoomPlayer, Sabotage } from '../../../shared/types';
 
 const PRESETS: { question: string; options: string[] }[] = [
   { question: 'Next corner leads to a shot on target?', options: ['Yes', 'No'] },
@@ -25,14 +25,18 @@ export function HostPanelPage() {
   const [customOpts, setCustomOpts] = useState(['Yes', 'No']);
   const [wagerTier, setWagerTier] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
   const [resolveOpt, setResolveOpt] = useState('');
+  const [roomSabotages, setRoomSabotages] = useState<Sabotage[]>([]);
 
   const isHost = room?.host_id === userId;
   const simRoom = isSimulationRoom(room);
 
   useEffect(() => {
-    if (!code) return;
+    if (!code || !session) return;
     api.flashBets(code).then((r) => setBets((r.bets as unknown as FlashBet[]) || [])).catch(() => {});
-  }, [code, room?.state]);
+    api.listSabotages(session.access_token, code).then((r) => {
+      setRoomSabotages((r.room_active as Sabotage[]) || []);
+    }).catch(() => {});
+  }, [code, room?.state, session]);
 
   const activeBet = useMemo(
     () => bets.find((b) => b.state === 'OPEN' || b.state === 'LOCKED'),
@@ -297,6 +301,25 @@ export function HostPanelPage() {
           </div>
         </section>
       )}
+
+      <section className="mb-6">
+        <h2 className="text-xs text-pitch-muted uppercase mb-2">Active sabotages</h2>
+        {roomSabotages.length === 0 ? (
+          <p className="text-xs text-pitch-muted">None active</p>
+        ) : (
+          <div className="space-y-1">
+            {roomSabotages.map((s) => {
+              const target = players.find((p) => p.user_id === s.target_id);
+              const buyer = players.find((p) => p.user_id === s.buyer_id);
+              return (
+                <p key={s.id} className="text-xs text-white ui-surface p-2">
+                  {s.emoji || '💣'} {buyer?.display_name || '?'} → {target?.display_name || '?'} ({s.label || s.sabotage_type})
+                </p>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="mb-6">
         <h2 className="text-xs text-pitch-muted uppercase mb-2">Players</h2>

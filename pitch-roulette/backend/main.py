@@ -14,7 +14,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import demo_compat, groups, health, leaderboard, profiles, rooms, sports
+from routers import demo_compat, groups, health, leaderboard, profiles, rooms, sabotages, sports
 from services.event_pipeline import start_event_pipeline
 
 
@@ -50,3 +50,4 @@ app.include_router(profiles.router)
 app.include_router(groups.router)
 app.include_router(leaderboard.router)
 app.include_router(rooms.router)
+app.include_router(sabotages.router)

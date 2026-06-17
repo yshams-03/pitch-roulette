@@ -34,6 +34,9 @@ def list_messages(room_id: str, before: str | None = None, limit: int = 50) -> l
 
 
 def post_message(room_id: str, user_id: str, content: str) -> dict:
+    from services.sabotages import assert_not_silenced
+
+    assert_not_silenced(room_id, user_id)
     text = _clean(content)
     db = get_supabase()
     prof = db.table("profiles").select("username").eq("id", user_id).execute()
