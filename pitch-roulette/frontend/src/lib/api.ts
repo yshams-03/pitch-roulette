@@ -1,4 +1,4 @@
-import type { Sabotage, SabotageShopItem } from '../../../shared/types';
+import type { DraftPick, Sabotage, SabotageShopItem, SquadPlayer } from '../../../shared/types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
@@ -165,6 +165,17 @@ export const api = {
       body: JSON.stringify({ sabotage_type, target_user_id }),
     }),
 
+  startDraft: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/start-draft`, token, { method: 'POST', body: '{}' }),
+  draftSquads: (code: string) =>
+    request<{ players: SquadPlayer[] }>(`/api/rooms/${code}/draft/squads`),
+  draftPicks: (code: string) =>
+    request<{ picks_by_user: Record<string, unknown>[]; all: DraftPick[] }>(`/api/rooms/${code}/draft/picks`),
+  draftPick: (token: string, code: string, player_id: string) =>
+    request(`/api/rooms/${code}/draft/pick`, token, {
+      method: 'POST',
+      body: JSON.stringify({ player_id }),
+    }),
   swapSide: (token: string, code: string) =>
     request(`/api/rooms/${code}/swap-side`, token, { method: 'POST', body: '{}' }),
 

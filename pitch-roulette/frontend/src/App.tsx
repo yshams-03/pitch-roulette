@@ -15,6 +15,7 @@ import { JoinRoomPage } from './pages/JoinRoomPage';
 import { RoomLobbyPage } from './pages/RoomLobbyPage';
 import { RoomPredictPage } from './pages/RoomPredictPage';
 import { RoomResultsPage } from './pages/RoomResultsPage';
+import { RoomDraftPage } from './pages/RoomDraftPage';
 import { RoomLivePage } from './pages/RoomLivePage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { DemoSandboxPage } from './pages/DemoSandboxPage';
@@ -46,6 +47,7 @@ export default function App() {
 
           <Route path="/room/:code/lobby" element={<ProtectedRoute><RoomLobbyPage /></ProtectedRoute>} />
           <Route path="/room/:code/predict" element={<ProtectedRoute><RoomPredictPage /></ProtectedRoute>} />
+          <Route path="/room/:code/draft" element={<ProtectedRoute><RoomDraftPage /></ProtectedRoute>} />
           <Route path="/room/:code/live" element={<ProtectedRoute><RoomLivePage /></ProtectedRoute>} />
           <Route path="/room/:code/results" element={<RoomResultsPage />} />
           <Route path="/host/:code" element={<ProtectedRoute><HostPanelPage /></ProtectedRoute>} />

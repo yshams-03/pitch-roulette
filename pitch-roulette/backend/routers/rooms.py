@@ -44,6 +44,7 @@ from services.points import actual_outcome, close_room_and_award
 from services.pitch_chips import ensure_starting_pc
 from services.room_messages import delete_message, list_messages, post_message
 from services.room_snapshot import room_snapshot as _room_snapshot
+from services.rooms_live import finalize_go_live
 from services.sabotages import silence_seconds_remaining
 from services.sides import swap_side
 
@@ -234,30 +235,13 @@ async def close_room(code: str, body: CloseRoomRequest, user_id: str = Depends(g
 
 @router.post("/{code}/go-live")
 async def go_live(code: str, user_id: str = Depends(get_current_user_id)):
-    db = get_supabase()
     r = _get_room(code)
-    _require_host(r, user_id)
-    if r["state"] != "CLOSED":
-        raise HTTPException(409, detail={"error": "invalid_state", "current": r["state"]})
-
-    if is_simulation_room(r):
-        updated = go_live_simulation(r)
-        return _room_snapshot(updated)
-
-    live = await sports_service.get_live_match(r["match_id"])
-    match_data, espn_event_id, last_seen = await sports_service.bootstrap_espn_for_live_room(live)
-
-    update: dict = {
-        "state": "LIVE",
-        "match_data": match_data,
-        "match_source": "live_api",
-        "espn_event_id": espn_event_id or r.get("espn_event_id"),
-    }
-    if last_seen:
-        update["last_seen_event_key"] = last_seen
-
-    updated = db.table("rooms").update(update).eq("id", r["id"]).execute().data[0]
-    return _room_snapshot(updated)
+    try:
+        return await finalize_go_live(r, user_id)
+    except PermissionError:
+        raise HTTPException(403, detail={"error": "not_host"})
+    except ValueError as e:
+        raise HTTPException(409, detail={"error": str(e), "current": r.get("state")})
 
 
 @router.post("/{code}/swap-side")

@@ -57,6 +57,10 @@ class KickPlayerRequest(BaseModel):
     user_id: str
 
 
+class DraftPickRequest(BaseModel):
+    player_id: str
+
+
 class PurchaseSabotageRequest(BaseModel):
     sabotage_type: Literal[
         "BLINDFOLD", "TAX", "SILENCE", "JINX", "MIRROR", "DOUBLE_OR_NOTHING"

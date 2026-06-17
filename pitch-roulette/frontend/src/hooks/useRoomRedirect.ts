@@ -6,12 +6,17 @@ const ROUTES: Partial<Record<RoomState, string>> = {
   LOBBY: 'lobby',
   PREDICTING: 'predict',
   CLOSED: 'predict',
+  DRAFTING: 'draft',
   LIVE: 'live',
   FULL_TIME: 'live',
   RESULTS: 'results',
 };
 
-export function useRoomRedirect(code: string | undefined, state: RoomState | undefined, current: 'lobby' | 'predict' | 'live' | 'results') {
+export function useRoomRedirect(
+  code: string | undefined,
+  state: RoomState | undefined,
+  current: 'lobby' | 'predict' | 'draft' | 'live' | 'results',
+) {
   const navigate = useNavigate();
 
   useEffect(() => {

@@ -191,6 +191,21 @@ export function HostPanelPage() {
             </button>
           )}
           {room.state === 'CLOSED' && (
+            <>
+              <button type="button" onClick={async () => {
+                if (!session || !code) return;
+                await api.startDraft(session.access_token, code);
+                toast.success('Draft started');
+                refresh();
+              }} className="ui-btn ui-btn-primary w-full">
+                Start draft
+              </button>
+              <button type="button" onClick={goLive} className="ui-btn w-full border border-pitch-muted text-pitch-muted">
+                Skip draft / Go live
+              </button>
+            </>
+          )}
+          {room.state === 'DRAFTING' && (
             <button type="button" onClick={goLive} className="ui-btn ui-btn-primary w-full">
               Go live
             </button>
