@@ -86,6 +86,7 @@ export function RoomLivePage() {
   );
 
   const mySessionPp = players.find((p) => p.user_id === userId)?.session_pp ?? 0;
+  const mySessionPc = Math.round(players.find((p) => p.user_id === userId)?.session_pc ?? 100);
 
   const handleNewEvent = useCallback((event: MatchEventLog) => {
     const ht = room?.match_data?.home_team || 'Home';
@@ -119,6 +120,9 @@ export function RoomLivePage() {
   const ppLeaderboard = [...players].sort(
     (a, b) => (b.session_pp ?? 0) - (a.session_pp ?? 0),
   );
+  const pcLeaderboard = [...players].sort(
+    (a, b) => (b.session_pc ?? 0) - (a.session_pc ?? 0),
+  );
 
   return (
     <div className="px-4 py-6 max-w-lg mx-auto relative">
@@ -136,6 +140,7 @@ export function RoomLivePage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-pitch-muted tabular-nums">{mySessionPp.toFixed(1)} PP</span>
+          <span className="text-xs text-pitch-amber tabular-nums" data-testid="session-pc">🪙 {mySessionPc} PC</span>
           <RoomConnectionBadge status={connectionStatus} />
         </div>
       </div>
@@ -226,6 +231,20 @@ export function RoomLivePage() {
               <Avatar name={p.display_name || '?'} color={p.avatar_color} size="sm" />
               <span className="text-sm text-white flex-1 truncate">{p.display_name}</span>
               <span className="text-sm font-mono text-pitch-green">{(p.session_pp ?? 0).toFixed(1)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="ui-surface p-3 mb-4">
+        <h2 className="text-xs text-pitch-muted mb-2 uppercase tracking-wide">Party chips (PC)</h2>
+        <div className="space-y-2">
+          {pcLeaderboard.map((p: RoomPlayer, i) => (
+            <div key={`pc-${p.user_id}`} className="flex items-center gap-2">
+              <span className="w-4 text-xs text-pitch-muted">{i + 1}</span>
+              <Avatar name={p.display_name || '?'} color={p.avatar_color} size="sm" />
+              <span className="text-sm text-white flex-1 truncate">{p.display_name}</span>
+              <span className="text-sm font-mono text-pitch-amber">{Math.round(p.session_pc ?? 0)}</span>
             </div>
           ))}
         </div>

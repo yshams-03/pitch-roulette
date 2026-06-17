@@ -358,11 +358,14 @@ async def create_simulation_room(
         "last_seen_event_key": None,
     })).execute().data[0]
 
-    db.table("room_players").insert({
+    host_row = db.table("room_players").insert({
         "room_id": room["id"],
         "user_id": host_id,
         "is_host": True,
-    }).execute()
+        "session_pc": 100,
+    }).execute().data[0]
+    from services.pitch_chips import ensure_starting_pc
+    ensure_starting_pc(room["id"], host_id, host_row["id"])
 
     join_bots_to_room(room["id"], room, host_id)
     if phase in ("PREDICTING", "CLOSED"):

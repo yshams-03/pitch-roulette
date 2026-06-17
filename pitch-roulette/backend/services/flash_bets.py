@@ -7,10 +7,17 @@ from datetime import datetime, timedelta, timezone
 from postgrest.exceptions import APIError
 
 from database import get_supabase
+from services.pitch_chips import (
+    FLASH_BET_PP_CORRECT,
+    apply_flash_bet_pc,
+    can_afford_wager,
+    pc_wager_for_tier,
+)
 
 logger = logging.getLogger(__name__)
 
-WAGER_AMOUNTS = {"LOW": 0.5, "MEDIUM": 1.0, "HIGH": 2.0}
+# PC wager tiers (party currency); PP awards are fixed on resolve
+WAGER_AMOUNTS = {"LOW": 5.0, "MEDIUM": 10.0, "HIGH": 20.0}
 FLASH_WINDOW_SECONDS = 12
 DEMO_FLASH_WINDOW_SECONDS = 30
 ANSWER_GRACE_SECONDS = 5
@@ -96,7 +103,7 @@ def create_manual_flash_bet(
     if len(options) < 2 or len(options) > 4:
         raise ValueError("invalid_options")
 
-    wager = WAGER_AMOUNTS.get(wager_tier, 1.0)
+    wager = pc_wager_for_tier(wager_tier)
     now = _now()
     locks = now + timedelta(seconds=FLASH_WINDOW_SECONDS)
     db = get_supabase()
@@ -130,7 +137,7 @@ def create_auto_flash_bet(
     if existing.data:
         return None
 
-    wager = WAGER_AMOUNTS.get(wager_tier, 1.0)
+    wager = pc_wager_for_tier(wager_tier)
     now = _now()
     window = window_seconds or FLASH_WINDOW_SECONDS
     locks = now + timedelta(seconds=window)
@@ -202,6 +209,10 @@ def submit_answer(code: str, bet_id: str, user_id: str, chosen_option: str) -> d
     if existing.data:
         raise ValueError("already_answered")
 
+    wager = float(b.get("wager_amount", pc_wager_for_tier(b.get("wager_tier", "MEDIUM"))))
+    if not can_afford_wager(room["id"], user_id, wager):
+        raise ValueError("insufficient_pc")
+
     return db.table("flash_bet_answers").insert({
         "flash_bet_id": bet_id,
         "room_id": room["id"],
@@ -226,21 +237,21 @@ def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str)
     if correct_option not in options:
         raise ValueError("invalid_option")
 
-    wager = float(b.get("wager_amount", 1))
     answers = db.table("flash_bet_answers").select("*").eq("flash_bet_id", bet_id).execute().data or []
 
     for ans in answers:
         correct = ans["chosen_option"] == correct_option
-        pp_change = (wager * 2) if correct else -wager
-        if not correct:
-            pp_change = -wager
+        pp_change = FLASH_BET_PP_CORRECT if correct else 0.0
+        pc_wager = float(b.get("wager_amount", 1))
 
         db.table("flash_bet_answers").update({
             "is_correct": correct,
             "pp_change": pp_change,
         }).eq("id", ans["id"]).execute()
 
-        _apply_pp(room, ans["user_id"], pp_change)
+        if pp_change:
+            _apply_pp(room, ans["user_id"], pp_change)
+        apply_flash_bet_pc(room["id"], ans["user_id"], pc_wager, correct, bet_id)
 
     now = _now().isoformat()
     db.table("flash_bets").update({

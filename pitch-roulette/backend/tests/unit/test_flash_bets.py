@@ -27,14 +27,15 @@ class TestFlashBetHelpers:
         assert _match_option("Maybe", opts) is None
 
     def test_wager_amounts_tiers(self):
-        assert WAGER_AMOUNTS["LOW"] == 0.5
-        assert WAGER_AMOUNTS["MEDIUM"] == 1.0
-        assert WAGER_AMOUNTS["HIGH"] == 2.0
+        assert WAGER_AMOUNTS["LOW"] == 5.0
+        assert WAGER_AMOUNTS["MEDIUM"] == 10.0
+        assert WAGER_AMOUNTS["HIGH"] == 20.0
 
 
 class TestSubmitAnswerGrace:
     def test_rejects_after_grace_period(self, fake_db, monkeypatch):
         monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
+        monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
         now = datetime.now(timezone.utc)
         locks_at = (now - timedelta(seconds=ANSWER_GRACE_SECONDS + 2)).isoformat()
         fake_db.seed("flash_bets", [{
@@ -43,7 +44,7 @@ class TestSubmitAnswerGrace:
             "state": "LOCKED",
             "options": ["Yes", "No"],
             "locks_at": locks_at,
-            "wager_amount": 1.0,
+            "wager_amount": 10.0,
         }])
 
         with pytest.raises(ValueError, match="bet_locked"):
@@ -51,6 +52,7 @@ class TestSubmitAnswerGrace:
 
     def test_accepts_within_grace_period(self, fake_db, monkeypatch):
         monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
+        monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
         now = datetime.now(timezone.utc)
         locks_at = (now - timedelta(seconds=2)).isoformat()
         fake_db.seed("flash_bets", [{
@@ -59,7 +61,7 @@ class TestSubmitAnswerGrace:
             "state": "LOCKED",
             "options": ["Yes", "No"],
             "locks_at": locks_at,
-            "wager_amount": 1.0,
+            "wager_amount": 10.0,
         }])
 
         ans = submit_answer("TEST01", "bet-1", "player-2", "Yes")
@@ -67,6 +69,7 @@ class TestSubmitAnswerGrace:
 
     def test_rejects_duplicate_answer(self, fake_db, monkeypatch):
         monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
+        monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
         now = datetime.now(timezone.utc)
         locks_at = (now + timedelta(seconds=30)).isoformat()
         fake_db.seed("flash_bets", [{
@@ -75,7 +78,7 @@ class TestSubmitAnswerGrace:
             "state": "OPEN",
             "options": ["Yes", "No"],
             "locks_at": locks_at,
-            "wager_amount": 1.0,
+            "wager_amount": 10.0,
         }])
         fake_db.seed("flash_bet_answers", [{
             "id": "ans-1",

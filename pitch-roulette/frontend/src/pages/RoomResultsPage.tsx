@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Avatar } from '../components/Avatar';
-import type { Prediction } from '../../../shared/types';
+import type { Prediction, RoomPlayer } from '../../../shared/types';
 
 export function RoomResultsPage() {
   const { code } = useParams<{ code: string }>();
   const [leaderboard, setLeaderboard] = useState<Prediction[]>([]);
+  const [partyBoard, setPartyBoard] = useState<RoomPlayer[]>([]);
   const [actual, setActual] = useState<{ home: number; away: number } | null>(null);
 
   useEffect(() => {
     if (!code) return;
     api.roomResults(code).then((r) => {
       setLeaderboard((r.leaderboard as Prediction[]) || []);
+      setPartyBoard((r.party_leaderboard as RoomPlayer[]) || []);
       setActual(r.actual_score as { home: number; away: number });
     });
   }, [code]);
@@ -25,20 +27,40 @@ export function RoomResultsPage() {
           Final: {actual.home} – {actual.away}
         </p>
       )}
-      <div className="space-y-2">
-        {leaderboard.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 rounded-xl bg-pitch-card border border-pitch-border p-3">
-            <span className="w-6 text-pitch-muted">{(p as Prediction & { rank?: number }).rank}</span>
-            <Avatar name={p.display_name || '?'} color={p.avatar_color} />
-            <div className="flex-1">
-              <Link to={`/profile/${p.username}`} className="font-medium text-white">{p.display_name}</Link>
-              <p className="text-sm text-pitch-muted">
-                Predicted {p.home_goals}–{p.away_goals}
-              </p>
-            </div>
-            <span className="font-bold text-pitch-green">+{p.points_earned} PP</span>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h2 className="text-sm font-semibold text-pitch-green mb-3">Skill board (PP)</h2>
+          <div className="space-y-2">
+            {leaderboard.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl bg-pitch-card border border-pitch-border p-3">
+                <span className="w-6 text-pitch-muted">{(p as Prediction & { rank?: number }).rank}</span>
+                <Avatar name={p.display_name || '?'} color={p.avatar_color} />
+                <div className="flex-1">
+                  <Link to={`/profile/${p.username}`} className="font-medium text-white">{p.display_name}</Link>
+                  <p className="text-sm text-pitch-muted">
+                    Predicted {p.home_goals}–{p.away_goals}
+                  </p>
+                </div>
+                <span className="font-bold text-pitch-green">+{p.points_earned} PP</span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-pitch-amber mb-3">Party board (PC)</h2>
+          <div className="space-y-2">
+            {partyBoard.map((p) => (
+              <div key={p.user_id} className="flex items-center gap-3 rounded-xl bg-pitch-card border border-pitch-border p-3">
+                <span className="w-6 text-pitch-muted">{(p as RoomPlayer & { party_rank?: number }).party_rank}</span>
+                <Avatar name={p.display_name || '?'} color={p.avatar_color} />
+                <div className="flex-1">
+                  <span className="font-medium text-white">{p.display_name}</span>
+                </div>
+                <span className="font-bold text-pitch-amber">🪙 {Math.round(p.session_pc ?? 0)} PC</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       <Link to="/" className="block mt-8 text-center text-pitch-green">Back to home</Link>
     </div>

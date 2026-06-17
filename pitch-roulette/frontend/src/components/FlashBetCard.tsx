@@ -92,7 +92,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
             bet_locked: 'Too late — voting closed',
             bet_not_open: 'This bet is no longer open',
             already_answered: 'You already answered',
-            not_in_room: 'Join the room first',
+            insufficient_pc: 'Not enough Pitch Chips for this wager',
           }[String(e.data.error)] || e.message)
         : e instanceof Error ? e.message : 'Could not submit';
       toast.error(msg);
@@ -123,7 +123,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
       </div>
 
       <p className="text-xs text-pitch-muted mb-3">
-        Wager: {bet.wager_amount} PP · Win {bet.wager_amount * 2} PP
+        Wager: {bet.wager_amount} PC · Win {bet.wager_amount * 2} PC · +0.5 PP if correct
         {open && <span className="text-pitch-green"> · Tap Yes or No</span>}
       </p>
 
