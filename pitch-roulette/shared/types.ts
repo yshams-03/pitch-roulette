@@ -1,131 +1,197 @@
-export type RoomState = 'LOBBY' | 'SCOUTING' | 'DRAFT_LOCKED' | 'LIVE' | 'FULL_TIME' | 'RESULTS';
-export type TeamLetter = 'A' | 'B';
-export type SabotageType = 'BLINDFOLD' | 'TAX_COLLECTOR' | 'CHAT_SILENCER' | 'JINX' | 'MIRROR';
-export type FlashBetState = 'FROZEN' | 'OPEN' | 'CLOSED' | 'RESOLVED';
+export type RoomState = 'LOBBY' | 'PREDICTING' | 'CLOSED' | 'LIVE' | 'FULL_TIME' | 'RESULTS';
+export type PredictedOutcome = 'HOME_WIN' | 'DRAW' | 'AWAY_WIN';
+export type LeaderboardPeriod = 'alltime' | 'month' | 'week';
+export type FlashBetState = 'PENDING' | 'OPEN' | 'LOCKED' | 'RESOLVED';
+export type WagerTier = 'LOW' | 'MEDIUM' | 'HIGH';
 
-export interface RoomSettings {
-  allow_switching: boolean;
-  module_fantasy: boolean;
-  module_flash_bets: boolean;
-  module_sabotage: boolean;
-  chaos_frequency: string;
-  api_buffer_seconds: number;
-  custom_switch_penalty: number | null;
-  test_mode?: boolean;
-  fantasy_pick_count?: number;
-  fantasy_all_teams?: boolean;
-  score_predictions?: Record<string, { score_a: number; score_b: number }>;
+export type MatchSource = 'live_api' | 'demo_simulation' | 'manual';
+export type BotDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface BotConfig {
+  enabled: boolean;
+  count: number;
+  difficulty: BotDifficulty;
 }
 
-export interface Player {
+export interface Profile {
   id: string;
-  room_id: string;
-  nickname: string;
-  assigned_team: TeamLetter | null;
-  balance: number;
-  switched_team: boolean;
-  switch_penalty_paid: number;
-  is_host: boolean;
-  is_connected: boolean;
-  session_token: string;
+  username: string;
+  display_name: string;
+  avatar_color: string;
+  total_points: number;
+  total_predictions: number;
+  correct_outcomes: number;
+  exact_scores: number;
+  current_streak: number;
+  best_streak: number;
+  rooms_created: number;
   created_at: string;
+  global_rank?: number;
+  global_rank_percentile?: number;
 }
 
-export interface FantasyPick {
+export interface FriendGroup {
   id: string;
-  player_id: string;
-  room_id: string;
-  api_player_id: number;
-  player_name: string;
-  position: string;
-  locked_at: string;
+  name: string;
+  emoji: string;
+  invite_code: string;
+  created_by: string | null;
+  created_at: string;
+  member_count?: number;
 }
 
-export interface FantasyScore {
+export interface GroupMember {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_color: string;
+  group_points: number;
+  total_predictions?: number;
+  exact_scores?: number;
+  win_rate?: number;
+  rank?: number;
+}
+
+export interface MatchSummary {
   id: string;
-  player_id: string;
-  room_id: string;
-  api_player_id: number;
-  current_rating: number;
-  bonus_pc: number;
-  penalty_pc: number;
-  total_fantasy_score: number;
-  last_updated: string;
+  home_team: string;
+  away_team: string;
+  home_logo?: string | null;
+  away_logo?: string | null;
+  kickoff: string;
+  status: string;
+  status_label: string;
+  minute?: number | null;
+  home_goals: number;
+  away_goals: number;
+  group_name?: string | null;
+  stage?: string | null;
+  venue?: string | null;
+  is_live: boolean;
+  demo?: boolean;
+  events_log?: MatchEventLog[];
 }
 
-export interface FlashBetOption {
-  label: string;
-  multiplier: number;
+export interface MatchEventLog {
+  type: string;
+  minute: number;
+  home_goals: number;
+  away_goals: number;
+  event_key?: string;
+  at?: string;
+}
+
+export interface StandingRow {
+  rank: number;
+  team: string;
+  team_logo?: string | null;
+  played: number;
+  won: number;
+  draw: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+  group?: string | null;
+}
+
+export interface Room {
+  id: string;
+  room_code: string;
+  match_id: string;
+  match_source?: MatchSource;
+  bot_config_json?: BotConfig | null;
+  espn_event_id?: string | null;
+  match_data: MatchSummary | null;
+  host_id: string | null;
+  group_id: string | null;
+  state: RoomState;
+  chat_enabled?: boolean;
+  actual_home_goals: number | null;
+  actual_away_goals: number | null;
+  created_at: string;
+  players?: RoomPlayer[];
+  predictions?: Prediction[];
+}
+
+export interface RoomPlayer {
+  id: string;
+  room_id: string;
+  user_id: string;
+  is_host: boolean;
+  joined_at: string;
+  username?: string;
+  display_name?: string;
+  avatar_color?: string;
+  session_pp?: number;
+}
+
+export interface Prediction {
+  id: string;
+  room_id: string;
+  user_id: string;
+  match_id: string;
+  home_goals: number;
+  away_goals: number;
+  predicted_outcome: PredictedOutcome;
+  points_earned: number;
+  is_first_submission: boolean;
+  submitted_at: string;
+  username?: string;
+  display_name?: string;
+  avatar_color?: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_color: string;
+  total_points: number;
+  total_predictions: number;
+  exact_scores: number;
+  correct_outcomes: number;
+  win_rate: number;
+  is_me?: boolean;
 }
 
 export interface FlashBet {
   id: string;
   room_id: string;
-  bet_type: string;
-  event_label: string;
-  options: Record<string, FlashBetOption>;
-  frozen_until: string;
-  closes_at: string;
-  resolved_at: string | null;
-  winning_option: string | null;
+  triggered_by: 'AUTO' | 'HOST';
+  question: string;
+  options: string[];
+  correct_option: string | null;
+  wager_tier: WagerTier;
+  wager_amount: number;
   state: FlashBetState;
+  opens_at: string | null;
+  locks_at: string | null;
+  resolved_at: string | null;
+  match_event_type: string | null;
   created_at: string;
 }
 
-export interface Sabotage {
+export interface FlashBetAnswer {
   id: string;
-  room_id: string;
-  sender_id: string;
-  target_id: string;
-  token_type: SabotageType;
-  cost: number;
-  active: boolean;
-  expires_at: string;
-  deployed_at: string;
-  sender_nickname?: string;
+  flash_bet_id: string;
+  user_id: string;
+  chosen_option: string;
+  is_correct: boolean | null;
+  pp_change: number;
+  answered_at: string;
+  username?: string;
+  display_name?: string;
 }
 
-export interface ChatMessage {
+export interface RoomMessage {
   id: string;
   room_id: string;
-  player_id: string | null;
-  nickname: string;
+  user_id: string;
+  username: string;
   content: string;
-  is_system: boolean;
-  created_at: string;
-}
-
-export interface Room {
-  id: string;
-  code: string;
-  host_player_id: string;
-  match_id: string | null;
-  match_name: string | null;
-  team_a_name: string | null;
-  team_b_name: string | null;
-  state: RoomState;
-  settings: RoomSettings;
-  underdog_team: TeamLetter | null;
-  underdog_multiplier: number;
-  squad_strength_a: number | null;
-  squad_strength_b: number | null;
-  handicap_active: boolean;
-  players?: Player[];
-}
-
-export interface LineupPlayer {
-  id: number;
-  name: string;
-  number: number;
-  pos: string;
-}
-
-export interface MatchSearchResult {
-  id: number;
-  date: string;
-  venue: string;
-  team_a: string;
-  team_b: string;
-  team_a_logo?: string;
-  team_b_logo?: string;
+  is_deleted: boolean;
+  sent_at: string;
 }

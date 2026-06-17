@@ -31,3 +31,10 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Test artifacts
+.coverage
+coverage.xml
+coverage/
+test-results/
+playwright-report/

@@ -1,220 +1,176 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
   data: Record<string, unknown>;
-
   constructor(status: number, data: Record<string, unknown>) {
-    super((data.error as string) || 'Request failed');
+    super((data.error as string) || (data.message as string) || 'Request failed');
     this.status = status;
     this.data = data;
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  token?: string | null,
+  options: RequestInit = {},
+  timeoutMs = path.startsWith('/api/demo') ? 45000 : 20000,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
+    const res = await fetch(`${API_BASE}${path}`, {
       ...options,
+      headers,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
     });
-
     const data = await res.json().catch(() => ({}));
-
     if (!res.ok) {
-      throw new ApiError(res.status, data.detail || data);
+      const detail = data.detail;
+      const errData = typeof detail === 'object' && detail !== null
+        ? (detail as Record<string, unknown>)
+        : data;
+      throw new ApiError(res.status, errData);
     }
-
     return data as T;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      const hint = path.startsWith('/api/demo')
+        ? 'Request timed out — is the backend running on port 8000? Restart it and try again.'
+        : 'Request timed out — the backend may be slow fetching sports data. Try again in a few seconds.';
+      throw new Error(hint);
+    }
+    throw e;
   } finally {
     clearTimeout(timeout);
   }
 }
 
 export const api = {
-  createRoom: (body: {
-    nickname: string;
-    match_id?: string;
-    match_name?: string;
-    team_a_name?: string;
-    team_b_name?: string;
-  }) => request<{ room_id: string; code: string; host_token: string; player_id: string }>(
-    '/rooms/create',
-    { method: 'POST', body: JSON.stringify(body) },
-  ),
+  health: () => request<Record<string, unknown>>('/api/health'),
+  standings: (comp = 'WC') => request<Record<string, unknown>>(`/api/standings/${comp}`),
+  matches: (comp = 'WC') => request<Record<string, unknown>>(`/api/matches/${comp}`),
+  liveMatch: (id: string) => request<Record<string, unknown>>(`/api/matches/${id}/live`),
 
-  joinRoom: (code: string, nickname: string) =>
-    request<{ player_id: string; session_token: string; room_state: string; code: string }>(
-      '/rooms/join',
-      { method: 'POST', body: JSON.stringify({ code, nickname }) },
+  myProfile: (token: string) => request<Record<string, unknown>>('/api/profile/me', token),
+  publicProfile: (username: string) => request<Record<string, unknown>>(`/api/profile/${username}`),
+  updateProfile: (token: string, display_name: string) =>
+    request('/api/profile/me', token, { method: 'PUT', body: JSON.stringify({ display_name }) }),
+
+  myGroups: (token: string) => request<{ groups: Record<string, unknown>[] }>('/api/groups/me', token),
+  createGroup: (token: string, name: string, emoji: string) =>
+    request('/api/groups', token, { method: 'POST', body: JSON.stringify({ name, emoji }) }),
+  groupDetail: (token: string, id: string) => request<Record<string, unknown>>(`/api/groups/${id}`, token),
+  joinGroup: (token: string, invite_code: string) =>
+    request('/api/groups/join', token, { method: 'POST', body: JSON.stringify({ invite_code }) }),
+  leaveGroup: (token: string, id: string) =>
+    request(`/api/groups/${id}/leave`, token, { method: 'DELETE' }),
+
+  globalLeaderboard: (period: string, page: number, token?: string | null) =>
+    request<Record<string, unknown>>(`/api/leaderboard/global?period=${period}&page=${page}`, token),
+
+  createRoom: (
+    token: string,
+    body: {
+      match_id?: string;
+      group_id?: string;
+      match_source?: 'live_api' | 'demo_simulation' | 'manual';
+      bot_config?: { enabled: boolean; count: number; difficulty: string };
+      phase?: string;
+    },
+  ) => {
+    const slow = body.match_source === 'demo_simulation';
+    return request<Record<string, unknown>>(
+      '/api/rooms',
+      token,
+      { method: 'POST', body: JSON.stringify(body) },
+      slow ? 45_000 : 20_000,
+    );
+  },
+  getRoom: (code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}`, undefined, {}, 45_000),
+  joinRoom: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/join`, token, { method: 'POST', body: '{}' }),
+  startRoom: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/start`, token, { method: 'POST', body: '{}' }),
+  predict: (token: string, code: string, body: Record<string, unknown>) =>
+    request(`/api/rooms/${code}/predict`, token, { method: 'POST', body: JSON.stringify(body) }),
+  closeRoom: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/close`, token, { method: 'POST', body: '{}' }),
+  lockRoom: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/lock`, token, { method: 'POST', body: '{}' }),
+  goLive: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/go-live`, token, { method: 'POST', body: '{}' }),
+  endMatch: (token: string, code: string, body?: Record<string, unknown>) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/end`, token, {
+      method: 'POST',
+      body: JSON.stringify(body || {}),
+    }),
+  roomResults: (code: string) => request<Record<string, unknown>>(`/api/rooms/${code}/results`),
+
+  flashBets: (code: string) => request<{ bets: Record<string, unknown>[] }>(`/api/rooms/${code}/flash-bets`),
+  createFlashBet: (token: string, code: string, body: Record<string, unknown>) =>
+    request(`/api/rooms/${code}/flash-bets`, token, { method: 'POST', body: JSON.stringify(body) }),
+  answerFlashBet: (token: string, code: string, betId: string, chosen_option: string) =>
+    request(`/api/rooms/${code}/flash-bets/${betId}/answer`, token, {
+      method: 'POST',
+      body: JSON.stringify({ chosen_option }),
+    }),
+  resolveFlashBet: (token: string, code: string, betId: string, correct_option: string) =>
+    request(`/api/rooms/${code}/flash-bets/${betId}/resolve`, token, {
+      method: 'POST',
+      body: JSON.stringify({ correct_option }),
+    }),
+  flashBetResults: (code: string, betId: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/flash-bets/${betId}/results`),
+
+  roomMessages: (code: string, before?: string) =>
+    request<{ messages: Record<string, unknown>[] }>(
+      `/api/rooms/${code}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`,
     ),
-
-  getRoom: (code: string) => request<Record<string, unknown>>(`/rooms/${code}`),
-
-  updateSettings: (code: string, sessionToken: string, settings: Record<string, unknown>) =>
-    request(`/rooms/${code}/settings`, {
-      method: 'PATCH',
-      body: JSON.stringify({ session_token: sessionToken, settings }),
-    }),
-
-  startDraft: (code: string, sessionToken: string) =>
-    request(`/rooms/${code}/start-draft`, {
+  sendMessage: (token: string, code: string, content: string) =>
+    request(`/api/rooms/${code}/messages`, token, { method: 'POST', body: JSON.stringify({ content }) }),
+  deleteMessage: (token: string, code: string, messageId: string) =>
+    request(`/api/rooms/${code}/messages/${messageId}`, token, { method: 'DELETE' }),
+  toggleChat: (token: string, code: string, enabled: boolean) =>
+    request(`/api/rooms/${code}/chat-toggle`, token, {
       method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken }),
+      body: JSON.stringify({ enabled }),
     }),
+  kickPlayer: (token: string, code: string, user_id: string) =>
+    request(`/api/rooms/${code}/kick`, token, { method: 'POST', body: JSON.stringify({ user_id }) }),
 
-  advanceState: (code: string, sessionToken: string, targetState?: string) =>
-    request(`/rooms/${code}/advance-state`, {
+  fastForward: (token: string, code: string) =>
+    request(`/api/rooms/${code}/fast-forward`, token, { method: 'POST', body: '{}' }),
+  injectEvent: (token: string, code: string, event_type: string) =>
+    request(`/api/rooms/${code}/inject-event`, token, {
       method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, target_state: targetState }),
+      body: JSON.stringify({ event_type }),
     }),
 
-  getMe: (sessionToken: string) =>
-    request<Record<string, unknown>>(`/players/me?session_token=${sessionToken}`),
-
-  heartbeat: (sessionToken: string) =>
-    request('/players/heartbeat', {
+  /** @deprecated Use createRoom({ match_source: 'demo_simulation' }) */
+  demoEnabled: () => request<{ enabled: boolean }>('/api/demo/enabled'),
+  /** @deprecated Use createRoom({ match_source: 'demo_simulation' }) */
+  demoStart: (token: string, phase = 'LOBBY') =>
+    request<{ code: string; room: Record<string, unknown> }>('/api/demo/start', token, {
       method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken }),
+      body: JSON.stringify({ phase }),
     }),
-
-  disconnect: (sessionToken: string) =>
-    request('/players/disconnect', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken }),
-    }),
-
-  switchTeam: (sessionToken: string) =>
-    request('/players/switch-team', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken }),
-    }),
-
-  submitFantasyPicks: (sessionToken: string, picks: Array<{ api_player_id: number; player_name: string; position: string; initial_rating?: number }>) =>
-    request('/players/fantasy/pick', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, picks }),
-    }),
-
-  getActiveBet: (roomId: string) =>
-    request<{ bet: Record<string, unknown> | null }>(`/flash-bets/${roomId}/active`),
-
-  placeWager: (sessionToken: string, flashBetId: string, chosenOption: string, amount: number) =>
-    request<{ option_label?: string; amount?: number }>('/flash-bets/wager', {
-      method: 'POST',
-      body: JSON.stringify({
-        session_token: sessionToken,
-        flash_bet_id: flashBetId,
-        chosen_option: chosenOption,
-        amount,
-      }),
-    }),
-
-  deploySabotage: (sessionToken: string, tokenType: string, targetId: string) =>
-    request('/sabotage/deploy', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, token_type: tokenType, target_id: targetId }),
-    }),
-
-  getActiveSabotages: (roomId: string, sessionToken: string) =>
-    request<{ sabotages: Record<string, unknown>[] }>(
-      `/sabotage/${roomId}/active?session_token=${sessionToken}`,
-    ),
-
-  sendChat: (sessionToken: string, content: string) =>
-    request('/chat/send', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, content }),
-    }),
-
-  getChatMessages: (roomId: string) =>
-    request<{ messages: Record<string, unknown>[] }>(`/chat/${roomId}/messages`),
-
-  searchMatches: (query: string) =>
-    request<{ matches: Record<string, unknown>[] }>(`/sports/search-match?q=${encodeURIComponent(query)}`),
-
-  getLineups: (matchId: string) =>
-    request<Record<string, unknown>>(`/sports/lineups/${matchId}`),
-
-  getLiveMatch: (matchId: string) =>
-    request<Record<string, unknown>>(`/sports/live/${matchId}`),
-
-  manualFlashBet: (
-    code: string,
-    sessionToken: string,
-    betType: string,
-    eventLabel: string,
-    options?: Record<string, unknown>,
-  ) =>
-    request(`/rooms/${code}/manual-flash-bet`, {
-      method: 'POST',
-      body: JSON.stringify({
-        session_token: sessionToken,
-        bet_type: betType,
-        event_label: eventLabel,
-        ...(options ? { options } : {}),
-      }),
-    }),
-
-  kickPlayer: (code: string, sessionToken: string, playerId: string) =>
-    request(`/rooms/${code}/kick`, {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, player_id: playerId }),
-    }),
-
-  rematch: (code: string, sessionToken: string) =>
-    request<{ code: string; host_token: string; room_id: string }>(`/rooms/${code}/rematch`, {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken }),
-    }),
-
-  testCreateSession: (nickname: string) =>
-    request<Record<string, unknown>>('/test/create-session', {
-      method: 'POST',
-      body: JSON.stringify({ nickname }),
-    }),
-
-  testQuickStart: (nickname: string) =>
-    request<Record<string, unknown>>('/test/quick-start', {
-      method: 'POST',
-      body: JSON.stringify({ nickname }),
-    }),
-
-  testStartDraft: () =>
-    request<{ state: string; message: string }>('/test/start-draft', { method: 'POST' }),
-
-  testLockFantasy: () =>
-    request<{ state: string; message: string }>('/test/lock-fantasy', { method: 'POST' }),
-
-  predictScore: (sessionToken: string, scoreA: number, scoreB: number) =>
-    request<{ prediction: { score_a: number; score_b: number } }>('/players/predict-score', {
-      method: 'POST',
-      body: JSON.stringify({ session_token: sessionToken, score_a: scoreA, score_b: scoreB }),
-    }),
-
-  testGoLive: () =>
-    request<{ state: string }>('/test/go-live', { method: 'POST' }),
-
-  testAdvanceEvent: () =>
-    request<Record<string, unknown>>('/test/advance-event', { method: 'POST' }),
-
-  testRunAuto: (speed: number) =>
-    request<Record<string, unknown>>('/test/run-auto', {
-      method: 'POST',
-      body: JSON.stringify({ speed }),
-    }),
-
-  testScenarioState: () =>
-    request<Record<string, unknown>>('/test/scenario-state'),
-
-  testReset: () =>
-    request<{ message: string }>('/test/reset', { method: 'POST' }),
+  /** @deprecated Use fastForward */
+  demoFastForward: (token: string, code: string) =>
+    request('/api/demo/rooms/' + code + '/fast-forward', token, { method: 'POST', body: '{}' }),
 };
 
-export { ApiError };
+export function formatKickoff(iso: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(new Date(iso));
+}
