@@ -8,9 +8,10 @@ interface Props {
   code: string;
   token: string;
   enabled: boolean;
+  silencedSeconds?: number;
 }
 
-export function RoomChat({ roomId, code, token, enabled }: Props) {
+export function RoomChat({ roomId, code, token, enabled, silencedSeconds = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -65,7 +66,7 @@ export function RoomChat({ roomId, code, token, enabled }: Props) {
 
   const send = async () => {
     const text = draft.trim();
-    if (!text || !enabled) return;
+    if (!text || !enabled || silencedSeconds > 0) return;
     setDraft('');
     try {
       await api.sendMessage(token, code, text);
@@ -125,7 +126,12 @@ export function RoomChat({ roomId, code, token, enabled }: Props) {
             ))}
             <div ref={bottomRef} />
           </div>
-          {enabled && (
+          {enabled && silencedSeconds > 0 && (
+            <p data-testid="chat-silenced" className="text-xs text-red-400 text-center py-2">
+              🔇 You&apos;ve been silenced ({silencedSeconds}s remaining)
+            </p>
+          )}
+          {enabled && silencedSeconds <= 0 && (
             <div className="flex gap-2">
               <input
                 data-testid="chat-input"

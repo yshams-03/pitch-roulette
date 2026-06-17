@@ -67,6 +67,8 @@ def fake_db() -> FakeSupabase:
     db.seed("predictions", [])
     db.seed("room_messages", [])
     db.seed("pc_transactions", [])
+    db.seed("sabotages", [])
+    db.seed("draft_picks", [])
     return db
 
 
@@ -81,8 +83,19 @@ def client(fake_db: FakeSupabase, auth_user_id: str, monkeypatch):
 
     reload_settings()
     monkeypatch.setattr("database.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("routers.rooms.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("routers.demo_compat.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.match_engine.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.event_pipeline.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.flash_bets.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.pitch_chips.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.sabotages.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.sides.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.draft.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.rooms_live.get_supabase", lambda: fake_db)
     monkeypatch.setattr("services.room_snapshot.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.host_management.get_supabase", lambda: fake_db)
+    monkeypatch.setattr("services.telemetry.get_supabase", lambda: fake_db)
 
     from auth import get_current_user_id
     from main import app

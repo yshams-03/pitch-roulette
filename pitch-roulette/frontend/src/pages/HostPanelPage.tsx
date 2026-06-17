@@ -5,8 +5,9 @@ import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
+import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { isSimulationRoom } from '../lib/roomUtils';
-import type { FlashBet, RoomPlayer } from '../../../shared/types';
+import type { FlashBet, RoomPlayer, Sabotage } from '../../../shared/types';
 
 const PRESETS: { question: string; options: string[] }[] = [
   { question: 'Next corner leads to a shot on target?', options: ['Yes', 'No'] },
@@ -19,20 +20,25 @@ const PRESETS: { question: string; options: string[] }[] = [
 export function HostPanelPage() {
   const { code } = useParams<{ code: string }>();
   const { session, userId } = useAuthStore();
+  const flags = useFeatureFlags();
   const { room, players, refresh } = useRoomRealtime(code);
   const [bets, setBets] = useState<FlashBet[]>([]);
   const [customQ, setCustomQ] = useState('');
   const [customOpts, setCustomOpts] = useState(['Yes', 'No']);
   const [wagerTier, setWagerTier] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
   const [resolveOpt, setResolveOpt] = useState('');
+  const [roomSabotages, setRoomSabotages] = useState<Sabotage[]>([]);
 
   const isHost = room?.host_id === userId;
   const simRoom = isSimulationRoom(room);
 
   useEffect(() => {
-    if (!code) return;
+    if (!code || !session) return;
     api.flashBets(code).then((r) => setBets((r.bets as unknown as FlashBet[]) || [])).catch(() => {});
-  }, [code, room?.state]);
+    api.listSabotages(session.access_token, code).then((r) => {
+      setRoomSabotages((r.room_active as Sabotage[]) || []);
+    }).catch(() => {});
+  }, [code, room?.state, session]);
 
   const activeBet = useMemo(
     () => bets.find((b) => b.state === 'OPEN' || b.state === 'LOCKED'),
@@ -137,6 +143,18 @@ export function HostPanelPage() {
     refresh();
   };
 
+  const makeHost = async (uid: string) => {
+    if (!guard()) return;
+    if (!window.confirm('Transfer host role to this player?')) return;
+    try {
+      await api.transferHost(session!.access_token, code!, uid);
+      toast.success('Host transferred');
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Transfer failed');
+    }
+  };
+
   const toggleChat = async (enabled: boolean) => {
     if (!guard()) return;
     await api.toggleChat(session!.access_token, code!, enabled);
@@ -187,6 +205,23 @@ export function HostPanelPage() {
             </button>
           )}
           {room.state === 'CLOSED' && (
+            <>
+              {flags.fantasy_draft && (
+                <button type="button" onClick={async () => {
+                  if (!session || !code) return;
+                  await api.startDraft(session.access_token, code);
+                  toast.success('Draft started');
+                  refresh();
+                }} className="ui-btn ui-btn-primary w-full">
+                  Start draft
+                </button>
+              )}
+              <button type="button" onClick={goLive} className="ui-btn w-full border border-pitch-muted text-pitch-muted">
+                {flags.fantasy_draft ? 'Skip draft / Go live' : 'Go live'}
+              </button>
+            </>
+          )}
+          {room.state === 'DRAFTING' && (
             <button type="button" onClick={goLive} className="ui-btn ui-btn-primary w-full">
               Go live
             </button>
@@ -200,7 +235,7 @@ export function HostPanelPage() {
         <p className="text-xs text-pitch-muted mt-2">State: {room.state}</p>
       </section>
 
-      {room.state === 'LIVE' && (
+      {room.state === 'LIVE' && flags.flash_bets && (
         <section className="mb-6">
           <h2 className="text-xs text-pitch-muted uppercase mb-2">Flash bets</h2>
 
@@ -299,6 +334,25 @@ export function HostPanelPage() {
       )}
 
       <section className="mb-6">
+        <h2 className="text-xs text-pitch-muted uppercase mb-2">Active sabotages</h2>
+        {roomSabotages.length === 0 ? (
+          <p className="text-xs text-pitch-muted">None active</p>
+        ) : (
+          <div className="space-y-1">
+            {roomSabotages.map((s) => {
+              const target = players.find((p) => p.user_id === s.target_id);
+              const buyer = players.find((p) => p.user_id === s.buyer_id);
+              return (
+                <p key={s.id} className="text-xs text-white ui-surface p-2">
+                  {s.emoji || '💣'} {buyer?.display_name || '?'} → {target?.display_name || '?'} ({s.label || s.sabotage_type})
+                </p>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="mb-6">
         <h2 className="text-xs text-pitch-muted uppercase mb-2">Players</h2>
         <div className="space-y-2">
           {players.map((p: RoomPlayer) => (
@@ -306,14 +360,24 @@ export function HostPanelPage() {
               <Avatar name={p.display_name || '?'} color={p.avatar_color} size="sm" />
               <span className="text-sm text-white flex-1">{p.display_name}</span>
               {!p.is_host && (
-                <button
-                  type="button"
-                  data-testid={`kick-player-${p.user_id}`}
-                  onClick={() => kick(p.user_id)}
-                  className="text-xs text-red-400"
-                >
-                  Kick
-                </button>
+                <>
+                  <button
+                    type="button"
+                    data-testid={`transfer-host-${p.user_id}`}
+                    onClick={() => makeHost(p.user_id)}
+                    className="text-xs text-pitch-green mr-2"
+                  >
+                    Make host
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`kick-player-${p.user_id}`}
+                    onClick={() => kick(p.user_id)}
+                    className="text-xs text-red-400"
+                  >
+                    Kick
+                  </button>
+                </>
               )}
             </div>
           ))}

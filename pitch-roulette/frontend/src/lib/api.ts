@@ -1,3 +1,5 @@
+import type { DraftPick, Sabotage, SabotageShopItem, SquadPlayer } from '../../../shared/types';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 export class ApiError extends Error {
@@ -55,6 +57,12 @@ async function request<T>(
 
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
+  featureFlags: () => request<{ flags: Record<string, boolean> }>('/api/flags'),
+  trackEvent: (token: string, event_name: string, properties: Record<string, unknown>) =>
+    request<{ ok: boolean }>('/api/events', token, {
+      method: 'POST',
+      body: JSON.stringify({ event_name, properties }),
+    }),
   standings: (comp = 'WC') => request<Record<string, unknown>>(`/api/standings/${comp}`),
   matches: (comp = 'WC') => request<Record<string, unknown>>(`/api/matches/${comp}`),
   liveMatch: (id: string) => request<Record<string, unknown>>(`/api/matches/${id}/live`),
@@ -146,6 +154,46 @@ export const api = {
     }),
   kickPlayer: (token: string, code: string, user_id: string) =>
     request(`/api/rooms/${code}/kick`, token, { method: 'POST', body: JSON.stringify({ user_id }) }),
+  transferHost: (token: string, code: string, user_id: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/transfer-host`, token, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+  leaveRoom: (token: string, code: string) =>
+    request<{ left: boolean; room_deleted?: boolean }>(`/api/rooms/${code}/leave`, token, {
+      method: 'POST',
+      body: '{}',
+    }),
+
+  sabotageShop: (token: string, code: string) =>
+    request<{ catalog: SabotageShopItem[]; session_pc: number; room_state: string }>(
+      `/api/rooms/${code}/sabotages/shop`,
+      token,
+    ),
+  listSabotages: (token: string, code: string) =>
+    request<{ targeting_me: Sabotage[]; room_active: Sabotage[]; is_host: boolean }>(
+      `/api/rooms/${code}/sabotages`,
+      token,
+    ),
+  purchaseSabotage: (token: string, code: string, sabotage_type: string, target_user_id: string) =>
+    request<Sabotage>(`/api/rooms/${code}/sabotages`, token, {
+      method: 'POST',
+      body: JSON.stringify({ sabotage_type, target_user_id }),
+    }),
+
+  startDraft: (token: string, code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/start-draft`, token, { method: 'POST', body: '{}' }),
+  draftSquads: (code: string) =>
+    request<{ players: SquadPlayer[] }>(`/api/rooms/${code}/draft/squads`),
+  draftPicks: (code: string) =>
+    request<{ picks_by_user: Record<string, unknown>[]; all: DraftPick[] }>(`/api/rooms/${code}/draft/picks`),
+  draftPick: (token: string, code: string, player_id: string) =>
+    request(`/api/rooms/${code}/draft/pick`, token, {
+      method: 'POST',
+      body: JSON.stringify({ player_id }),
+    }),
+  swapSide: (token: string, code: string) =>
+    request(`/api/rooms/${code}/swap-side`, token, { method: 'POST', body: '{}' }),
 
   fastForward: (token: string, code: string) =>
     request(`/api/rooms/${code}/fast-forward`, token, { method: 'POST', body: '{}' }),

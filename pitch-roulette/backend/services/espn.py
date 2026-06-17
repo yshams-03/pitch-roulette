@@ -168,7 +168,10 @@ async def _get(path: str, params: dict | None = None) -> tuple[dict, str | None]
     settings = get_settings()
     url = f"{settings.ESPN_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(12.0, connect=5.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(12.0, connect=5.0),
+            verify=settings.ESPN_SSL_VERIFY,
+        ) as client:
             r = await client.get(url, params=params or {})
             if r.status_code != 200:
                 return {}, f"ESPN HTTP {r.status_code}"

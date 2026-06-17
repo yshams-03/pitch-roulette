@@ -7,6 +7,9 @@ import { useAuthStore } from '../store/authStore';
 import { GroupTableCard } from '../components/GroupTableCard';
 import { FixturesList } from '../components/FixturesList';
 import { KnockoutBracket } from '../components/KnockoutBracket';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { TeamCrest } from '../components/TeamCrest';
 import type { FriendGroup, MatchSummary, StandingRow } from '../../../shared/types';
 
 const REFRESH_MS = 30_000;
@@ -29,6 +32,7 @@ function groupStandingsByGroup(rows: StandingRow[]): Record<string, StandingRow[
 export function HomePage() {
   const [tab, setTab] = useState<HomeTab>('table');
   const [tableView, setTableView] = useState<TableView>('full');
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [matches, setMatches] = useState<MatchSummary[]>([]);
   const [standings, setStandings] = useState<StandingRow[]>([]);
   const [friendGroups, setFriendGroups] = useState<(FriendGroup & { my_group_points?: number })[]>([]);
@@ -101,10 +105,18 @@ export function HomePage() {
   }, [matches, loadData]);
 
   const groupedStandings = useMemo(() => groupStandingsByGroup(standings), [standings]);
+  const groupKeys = useMemo(() => Object.keys(groupedStandings), [groupedStandings]);
+
+  useEffect(() => {
+    if (groupKeys.length && !activeGroup) setActiveGroup(groupKeys[0]);
+  }, [groupKeys, activeGroup]);
+
   const scheduleMatches = useMemo(
     () => [...matches].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()),
     [matches],
   );
+
+  const liveMatch = useMemo(() => matches.find((m) => m.is_live), [matches]);
 
   const createRoom = async (matchId: string) => {
     if (!session) {
@@ -121,31 +133,54 @@ export function HomePage() {
 
   return (
     <div className="mx-auto max-w-lg pb-4">
-      <header className="flex items-center justify-between gap-3 border-b border-pitch-border px-4 py-3">
-        <h1 className="text-base font-semibold text-white">
+      {liveMatch && (
+        <div className="live-hero px-4 py-4">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <Badge variant="live" dot>LIVE</Badge>
+            <span className="text-sm text-[var(--text-secondary)] tabular-nums">
+              {liveMatch.minute != null ? `${liveMatch.minute}'` : 'Live'}
+            </span>
+          </div>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <TeamCrest name={liveMatch.home_team} logo={liveMatch.home_logo} size="md" />
+            <span className="text-sm font-semibold truncate max-w-[5rem]">{liveMatch.home_team}</span>
+            <span className="score text-2xl tabular-nums">
+              {liveMatch.home_goals} - {liveMatch.away_goals}
+            </span>
+            <span className="text-sm font-semibold truncate max-w-[5rem]">{liveMatch.away_team}</span>
+            <TeamCrest name={liveMatch.away_team} logo={liveMatch.away_logo} size="md" />
+          </div>
+          <Button variant="primary" size="lg" fullWidth onClick={() => createRoom(liveMatch.id)}>
+            Create Room →
+          </Button>
+        </div>
+      )}
+
+      <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+        <h1 className="text-base font-bold">
           World Cup{season ? ` ${season}` : ''}
         </h1>
         <div className="flex items-center gap-2">
           {session && (
-            <Link to="/demo" className="text-xs text-pitch-green font-medium">Demo</Link>
+            <Link to="/demo" className="text-xs text-[var(--pr-green)] font-semibold">Demo</Link>
           )}
           <button
-          type="button"
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-          className="ui-btn min-h-9 min-w-9 px-0 text-pitch-muted"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-        </button>
+            type="button"
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="btn btn-ghost btn-sm min-h-9 min-w-9 p-0"
+            aria-label="Refresh"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </header>
 
       {apiError && (
-        <p className="border-b border-pitch-border px-4 py-2 text-xs text-pitch-amber">{apiError}</p>
+        <p className="border-b border-[var(--border)] px-4 py-2 text-xs text-[var(--pr-gold)]">{apiError}</p>
       )}
 
-      <nav className="flex border-b border-pitch-border px-2">
+      <nav className="pr-tabs px-2">
         {([
           ['table', 'Table'],
           ['fixtures', 'Fixtures'],
@@ -155,7 +190,7 @@ export function HomePage() {
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className="ui-tab"
+            className="pr-tab"
             data-active={tab === id}
           >
             {label}
@@ -166,18 +201,30 @@ export function HomePage() {
       {loading ? (
         <div className="space-y-3 px-4 pt-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-pitch-card border border-pitch-border rounded-lg" />
+            <div key={i} className="h-20 skeleton" />
           ))}
         </div>
       ) : loadError ? (
-        <div className="ui-surface mx-4 mt-4 p-6 text-center">
-          <p className="mb-4 text-sm text-pitch-muted">{loadError}</p>
-          <button type="button" onClick={() => loadData()} className="ui-btn ui-btn-primary w-full">
-            Retry
-          </button>
+        <div className="surface mx-4 mt-4 p-6 text-center">
+          <p className="mb-4 text-sm text-[var(--text-secondary)]">{loadError}</p>
+          <Button variant="primary" fullWidth onClick={() => loadData()}>Retry</Button>
         </div>
       ) : tab === 'table' ? (
         <div className="space-y-3 px-4 pt-3">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {groupKeys.map((g) => (
+              <button
+                key={g}
+                type="button"
+                className="group-pill"
+                data-active={activeGroup === g}
+                onClick={() => setActiveGroup(g)}
+              >
+                Group {g}
+              </button>
+            ))}
+          </div>
+
           <div className="ui-segment">
             {(['short', 'full'] as const).map((v) => (
               <button
@@ -191,16 +238,15 @@ export function HomePage() {
             ))}
           </div>
 
-          {Object.entries(groupedStandings).map(([group, rows]) => (
+          {activeGroup && groupedStandings[activeGroup] && (
             <GroupTableCard
-              key={group}
-              group={group}
-              rows={rows}
+              group={activeGroup}
+              rows={groupedStandings[activeGroup]}
               compact={tableView === 'short'}
             />
-          ))}
-          {Object.keys(groupedStandings).length === 0 && (
-            <p className="py-8 text-center text-sm text-pitch-muted">No standings</p>
+          )}
+          {groupKeys.length === 0 && (
+            <p className="py-8 text-center text-sm text-[var(--text-muted)]">No standings</p>
           )}
         </div>
       ) : tab === 'fixtures' ? (
@@ -214,20 +260,20 @@ export function HomePage() {
       )}
 
       {session && friendGroups.length > 0 && (
-        <section className="border-t border-pitch-border px-4 pt-4 mt-4">
+        <section className="border-t border-[var(--border)] px-4 pt-4 mt-4">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-white">Groups</h2>
-            <Link to="/groups" className="text-xs text-pitch-muted">All</Link>
+            <h2 className="text-sm font-semibold">Groups</h2>
+            <Link to="/groups" className="text-xs text-[var(--text-secondary)]">All</Link>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {friendGroups.map((g) => (
               <Link
                 key={g.id}
                 to={`/groups/${g.id}`}
-                className="ui-surface shrink-0 min-w-[6.5rem] px-3 py-2"
+                className="surface shrink-0 min-w-[6.5rem] px-3 py-2 no-underline card-lift"
               >
-                <p className="truncate text-sm text-white">{g.name}</p>
-                <p className="text-xs text-pitch-muted tabular-nums">{g.my_group_points ?? 0} pts</p>
+                <p className="truncate text-sm font-medium">{g.emoji} {g.name}</p>
+                <p className="text-xs text-[var(--text-secondary)] tabular-nums">{g.my_group_points ?? 0} pts</p>
               </Link>
             ))}
           </div>
@@ -235,13 +281,9 @@ export function HomePage() {
       )}
 
       <div className="flex gap-2 px-4 pt-4">
-        <Link to="/join" className="ui-btn flex-1">
-          Join room
-        </Link>
+        <Link to="/join" className="btn btn-secondary flex-1 no-underline">Join room</Link>
         {!session && (
-          <Link to="/auth/login" className="ui-btn ui-btn-primary flex-1">
-            Log in
-          </Link>
+          <Link to="/auth/login" className="btn btn-primary flex-1 no-underline">Log in</Link>
         )}
       </div>
     </div>

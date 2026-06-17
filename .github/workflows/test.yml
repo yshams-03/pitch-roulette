@@ -67,5 +67,68 @@ jobs:
           files: pitch-roulette/frontend/coverage/coverage-final.json
           fail_ci_if_error: false
 
-  # E2E is manual/nightly — not on PR due to credential requirements.
+  # E2E smoke on PR — home page only, no Supabase credentials required.
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pitch-roulette
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        working-directory: pitch-roulette/backend
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: pitch-roulette/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: pitch-roulette/frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: pitch-roulette/frontend
+        run: npx playwright install chromium --with-deps
+
+      - name: Write frontend .env for smoke E2E
+        working-directory: pitch-roulette/frontend
+        run: |
+          echo "VITE_API_BASE_URL=http://127.0.0.1:8000" >> .env
+          echo "VITE_SUPABASE_URL=https://example.supabase.co" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=smoke-test-anon-key" >> .env
+
+      - name: Start backend
+        working-directory: pitch-roulette/backend
+        env:
+          DEMO_MODE: true
+          ESPN_ENABLED: false
+          MOCK_MODE: true
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: smoke-test-key
+        run: |
+          uvicorn main:app --host 127.0.0.1 --port 8000 &
+          sleep 3
+          curl -sf http://127.0.0.1:8000/api/health
+
+      - name: Build frontend
+        working-directory: pitch-roulette/frontend
+        run: npm run build
+
+      - name: Run E2E smoke
+        working-directory: pitch-roulette/frontend
+        env:
+          E2E_API_URL: http://127.0.0.1:8000
+        run: npx playwright test e2e/home.spec.ts --project=chromium
+
+  # Full E2E is manual/nightly — credential requirements.
   # See: .github/workflows/e2e-nightly.yml

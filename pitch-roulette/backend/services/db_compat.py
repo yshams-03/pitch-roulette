@@ -5,7 +5,7 @@ from postgrest.exceptions import APIError
 
 _LEGACY_LIVE_COLS = (
     "id, room_code, host_id, match_id, espn_event_id, "
-    "match_data, last_seen_event_key, state"
+    "match_data, last_seen_event_key, state, created_at"
 )
 _UNIFIED_LIVE_COLS = (
     f"{_LEGACY_LIVE_COLS}, match_source, match_simulation_json, bot_config_json"

@@ -2,19 +2,21 @@ import type { StandingRow } from '../../../shared/types';
 import { TeamCrest } from './TeamCrest';
 import { formatGoalDiff, goalsForAgainst } from '../lib/format';
 
-function qualBarClass(rank: number) {
-  if (rank <= 2) return 'bg-pitch-green';
-  if (rank === 3) return 'bg-pitch-amber';
-  return 'bg-transparent';
+function rowAccent(rank: number) {
+  if (rank <= 2) return 'table-row-qualified';
+  if (rank === 3) return 'table-row-playoff';
+  return '';
 }
 
 function StatHeader({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <span className={`text-[10px] text-pitch-muted text-center w-5 ${className}`}>{children}</span>;
+  return <span className={`text-[10px] text-[var(--text-muted)] text-center w-5 ${className}`}>{children}</span>;
 }
 
-function StatCell({ children, bold = false }: { children: React.ReactNode; bold?: boolean }) {
+function StatCell({ children, bold = false, muted = false }: { children: React.ReactNode; bold?: boolean; muted?: boolean }) {
   return (
-    <span className={`text-[11px] text-center w-5 tabular-nums ${bold ? 'font-medium text-white' : 'text-pitch-muted'}`}>
+    <span className={`text-[11px] text-center w-5 tabular-nums ${
+      bold ? 'font-bold text-[var(--text-primary)]' : muted ? 'text-[var(--text-muted)]' : 'text-[var(--text-secondary)]'
+    }`}>
       {children}
     </span>
   );
@@ -30,17 +32,17 @@ export function GroupTableCard({
   compact?: boolean;
 }) {
   return (
-    <div className="ui-surface overflow-hidden">
-      <div className="flex items-center justify-between border-b border-pitch-border px-3 py-2">
-        <h3 className="text-sm font-medium text-white">Grp. {group}</h3>
+    <div className="surface overflow-hidden">
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+        <h3 className="text-sm font-semibold">Group {group}</h3>
         <div className="flex items-center gap-0.5">
-          <StatHeader>Pl</StatHeader>
+          <StatHeader>MP</StatHeader>
           {!compact && (
             <>
               <StatHeader>W</StatHeader>
               <StatHeader>D</StatHeader>
               <StatHeader>L</StatHeader>
-              <StatHeader className="w-7">+/-</StatHeader>
+              <StatHeader className="w-7">GF/GA</StatHeader>
             </>
           )}
           <StatHeader>GD</StatHeader>
@@ -50,27 +52,31 @@ export function GroupTableCard({
 
       <div>
         {rows.map((r) => (
-          <div key={r.team} className="flex items-center min-h-[40px] border-t border-pitch-border first:border-t-0">
-            <div className={`w-0.5 self-stretch shrink-0 ${qualBarClass(r.rank)}`} />
-            <div className="flex items-center flex-1 min-w-0 gap-2 pl-2 pr-1 py-1.5">
-              <span className="text-[11px] text-pitch-muted w-3 shrink-0 tabular-nums">{r.rank}</span>
-              <TeamCrest name={r.team} logo={r.team_logo} size={18} />
-              <span className="text-[13px] text-white truncate flex-1">{r.team}</span>
+          <div
+            key={r.team}
+            className={`flex items-center min-h-[44px] border-t border-[var(--border)] first:border-t-0 ${rowAccent(r.rank)}`}
+          >
+            <div className="flex items-center flex-1 min-w-0 gap-2 pl-3 pr-1 py-1.5">
+              <span className="text-[11px] text-[var(--text-muted)] w-4 shrink-0 tabular-nums">{r.rank}</span>
+              <TeamCrest name={r.team} logo={r.team_logo} size="xs" />
+              <span className={`text-[13px] truncate flex-1 ${r.rank > 3 ? 'text-[var(--text-muted)]' : 'font-medium'}`}>
+                {r.team}
+              </span>
             </div>
             <div className="flex items-center gap-0.5 pr-3 shrink-0">
-              <StatCell>{r.played}</StatCell>
+              <StatCell muted={r.rank > 3}>{r.played}</StatCell>
               {!compact && (
                 <>
-                  <StatCell>{r.won}</StatCell>
-                  <StatCell>{r.draw}</StatCell>
-                  <StatCell>{r.lost}</StatCell>
-                  <span className="text-[11px] text-pitch-muted text-center w-7 tabular-nums">
+                  <StatCell muted={r.rank > 3}>{r.won}</StatCell>
+                  <StatCell muted={r.rank > 3}>{r.draw}</StatCell>
+                  <StatCell muted={r.rank > 3}>{r.lost}</StatCell>
+                  <span className="text-[11px] text-[var(--text-muted)] text-center w-7 tabular-nums">
                     {goalsForAgainst(r.goals_for, r.goals_against)}
                   </span>
                 </>
               )}
-              <StatCell>{formatGoalDiff(r.goal_diff)}</StatCell>
-              <StatCell bold>{r.points}</StatCell>
+              <StatCell muted={r.rank > 3}>{formatGoalDiff(r.goal_diff)}</StatCell>
+              <StatCell bold={r.rank <= 3} muted={r.rank > 3}>{r.points}</StatCell>
             </div>
           </div>
         ))}

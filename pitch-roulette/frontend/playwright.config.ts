@@ -29,7 +29,7 @@ const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5173';
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/full-game.spec.ts'],
-  timeout: 240_000,
+  timeout: 60_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
@@ -39,7 +39,7 @@ export default defineConfig({
     baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'off',
+    video: process.env.CI ? 'retain-on-failure' : 'off',
     actionTimeout: 15_000,
     navigationTimeout: 20_000,
   },

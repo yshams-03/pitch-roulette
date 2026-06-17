@@ -9,9 +9,16 @@ from postgrest.exceptions import APIError
 from database import get_supabase
 from services.pitch_chips import (
     FLASH_BET_PP_CORRECT,
-    apply_flash_bet_pc,
     can_afford_wager,
     pc_wager_for_tier,
+)
+from services.sabotages import (
+    apply_flash_bet_pc_with_sabotage,
+    apply_mirror_to_choice,
+    consume_flash_sabotages_on_answer,
+    get_active_flash_sabotages,
+    get_sabotage_flags_for_answer,
+    waste_flash_sabotages_on_resolve,
 )
 
 logger = logging.getLogger(__name__)
@@ -213,6 +220,12 @@ def submit_answer(code: str, bet_id: str, user_id: str, chosen_option: str) -> d
     if not can_afford_wager(room["id"], user_id, wager):
         raise ValueError("insufficient_pc")
 
+    active_sabs = get_active_flash_sabotages(room["id"], user_id)
+    if any(s.get("sabotage_type") == "MIRROR" for s in active_sabs):
+        matched = apply_mirror_to_choice(matched, options)
+
+    consume_flash_sabotages_on_answer(room["id"], user_id, bet_id)
+
     return db.table("flash_bet_answers").insert({
         "flash_bet_id": bet_id,
         "room_id": room["id"],
@@ -238,11 +251,13 @@ def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str)
         raise ValueError("invalid_option")
 
     answers = db.table("flash_bet_answers").select("*").eq("flash_bet_id", bet_id).execute().data or []
+    answered_ids = {a["user_id"] for a in answers}
 
     for ans in answers:
         correct = ans["chosen_option"] == correct_option
         pp_change = FLASH_BET_PP_CORRECT if correct else 0.0
         pc_wager = float(b.get("wager_amount", 1))
+        flags = get_sabotage_flags_for_answer(room["id"], ans["user_id"], bet_id)
 
         db.table("flash_bet_answers").update({
             "is_correct": correct,
@@ -251,7 +266,11 @@ def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str)
 
         if pp_change:
             _apply_pp(room, ans["user_id"], pp_change)
-        apply_flash_bet_pc(room["id"], ans["user_id"], pc_wager, correct, bet_id)
+        apply_flash_bet_pc_with_sabotage(
+            room["id"], ans["user_id"], pc_wager, correct, bet_id, flags,
+        )
+
+    waste_flash_sabotages_on_resolve(room["id"], bet_id, answered_ids)
 
     now = _now().isoformat()
     db.table("flash_bets").update({

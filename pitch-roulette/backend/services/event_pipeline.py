@@ -21,12 +21,14 @@ from services.flash_bets import (
 )
 from services.match_engine import (
     EVENT_QUESTIONS,
+    cleanup_abandoned_live_demo_rooms,
     infer_match_source,
     inject_random_event,
     is_simulation_room,
     resolve_active_bet,
     cleanup_stale_simulation_rooms,
 )
+from services.host_management import cleanup_orphan_host_rooms
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,9 @@ def _process_simulation_room(room: dict) -> None:
                 logger.debug("resolve skipped %s: %s", code, e)
         return
 
+    from services.sabotages import maybe_bot_purchase_sabotage
+    maybe_bot_purchase_sabotage(room)
+
     if infer_match_source(room) != "demo_simulation":
         return
 
@@ -201,7 +206,11 @@ async def _process_live_api_room(room: dict, db) -> None:
         snapshot = await sports_service.get_espn_live_snapshot(str(espn_id))
 
     if snapshot.get("error"):
-        logger.warning("ESPN snapshot failed for room %s: %s", room["id"], snapshot.get("error"))
+        err = snapshot.get("error")
+        if err == "demo_match":
+            logger.debug("ESPN skipped for demo room %s", room.get("room_code"))
+            return
+        logger.warning("ESPN snapshot failed for room %s: %s", room["id"], err)
         await _process_score_fallback(room, db, fd_live)
         return
 
@@ -287,12 +296,24 @@ def _record_room_event(room_id: str, event: dict, source: str) -> None:
         }).execute()
     except Exception:
         pass
+    try:
+        from services.draft import process_draft_event
+        player_id = event.get("player_id") or event.get("athlete_id")
+        process_draft_event(room_id, str(event.get("type", "")), str(player_id) if player_id else None)
+    except Exception:
+        pass
 
 
 async def _tick_once() -> None:
     lock_expired_bets()
     try:
         cleanup_stale_simulation_rooms()
+        n = cleanup_abandoned_live_demo_rooms()
+        if n:
+            logger.info("Auto-ended %s stale LIVE demo room(s)", n)
+        n_orphan = cleanup_orphan_host_rooms()
+        if n_orphan:
+            logger.info("Orphan host cleanup: %s room(s)", n_orphan)
     except APIError as e:
         if not _missing_phase2_table(e):
             logger.debug("cleanup skipped: %s", e)
@@ -304,6 +325,20 @@ async def _tick_once() -> None:
             _warn_migration_once()
             return
         raise
+
+    for room in live_rooms:
+        if room.get("state") != "LIVE":
+            continue
+        md = room.get("match_data") or {}
+        if md.get("status") in ("FINISHED", "FT", "Full time") or md.get("status_label") == "Full time":
+            try:
+                from services.points import close_room_and_award
+                home = int(md.get("home_goals") or room.get("actual_home_goals") or 0)
+                away = int(md.get("away_goals") or room.get("actual_away_goals") or 0)
+                await close_room_and_award(room["id"], home, away)
+                logger.info("Auto-ended room %s — match finished", room.get("room_code"))
+            except Exception as exc:
+                logger.debug("auto-end skipped %s: %s", room.get("room_code"), exc)
 
     sim_rooms = []
     api_rooms = []

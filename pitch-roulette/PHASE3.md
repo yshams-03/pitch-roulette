@@ -1,37 +1,33 @@
 # Pitch Roulette — Phase 3 Specification
 
-**Status:** In progress (Feature 1: Pitch Chips)  
-**Base:** v3.0.0 on `main`  
-**Priority order:** Pitch Chips → Sabotage → Side assignment → Fantasy draft → Limitations cleanup
-
-See the full feature spec in the agent prompt (June 2026). This file tracks implementation status.
+**Status:** Features 2–5 implemented on `feat/phase3-sabotage`  
+**Base:** Feature 1 merged (PR #2)  
+**Priority order:** Pitch Chips → Sabotage → Sides → Draft → Cleanup
 
 ## Feature checklist
 
 | # | Feature | Status |
 |---|---------|--------|
-| 1 | Pitch Chips (PC) currency | ✅ Core done (migration 003, PC wagering, UI) |
-| 2 | Sabotage shop | ⏳ Pending |
-| 3 | Side assignment | ⏳ Pending |
-| 4 | Fantasy draft | ⏳ Pending |
-| 5 | Limitations cleanup (bracket SVG, FULL_TIME auto, nightly E2E, host delete, branch protection) | ⏳ Pending |
+| 1 | Pitch Chips (PC) currency | ✅ Merged (PR #2) |
+| 2 | Sabotage shop | ✅ Done |
+| 3 | Side assignment | ✅ Done |
+| 4 | Fantasy draft | ✅ Done |
+| 5 | Limitations cleanup | ✅ Done |
 
 ## Schema migrations
 
 | File | Purpose |
 |------|---------|
-| `supabase/migrations/003_phase3_pitch_chips.sql` | `session_pc`, `pc_transactions` |
-| `004_phase3_sabotage.sql` | (planned) `sabotages` |
-| `005_phase3_sides.sql` | (planned) `assigned_side`, `side_swap_used` |
-| `006_phase3_draft.sql` | (planned) `DRAFTING` state, `draft_picks` |
+| `003_phase3_pitch_chips.sql` | `session_pc`, `pc_transactions` |
+| `004_phase3_sabotage.sql` | `sabotages` |
+| `005_phase3_sides.sql` | `assigned_side`, `side_swap_used` |
+| `006_phase3_draft.sql` | `DRAFTING` state, `draft_picks`, `draft_started_at` |
+
+Run migrations **003 → 006** in order in Supabase SQL Editor.
 
 ## Critical rules
 
-- Do not break Phase 1/2 — run `pytest` + `npm run test:unit` after each feature
-- PC never below 0 (server-side validation)
-- PP unchanged for predictions; flash bets award **+0.5 PP** on correct (skill), PC for wagering
-- Sabotage MIRROR invisible to target (Feature 2)
-
-## Out of scope (Phase 4)
-
-Push notifications, monetization, share cards, global tournaments, spectator mode, voice chat, mobile app.
+- PC never below 0 (server-side)
+- MIRROR invisible to target in API/UI
+- Go-live from CLOSED auto-skips draft (auto-assign) for E2E compat; use **Start draft** for full draft UX
+- Underdog +20 PC on go-live when sides imbalanced

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { api, ApiError } from '../lib/api';
+import { CountdownRing } from './ui/CountdownRing';
+import { Button } from './ui/Button';
 import type { FlashBet, FlashBetAnswer } from '../../../shared/types';
 
 function parseOptions(options: FlashBet['options']): string[] {
@@ -28,15 +31,22 @@ function windowSeconds(bet: FlashBet): number {
 
 const ANSWER_GRACE_UI = 5;
 
+const flashBetVariants = {
+  initial: { opacity: 0, y: -40, scale: 0.95 },
+  animate: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring' as const, stiffness: 300, damping: 25 } },
+  exit: { opacity: 0, y: -20, scale: 0.95 },
+};
+
 interface Props {
   bet: FlashBet;
   code: string;
   token: string;
   myAnswer?: FlashBetAnswer;
   onAnswered: () => void;
+  blindfolded?: boolean;
 }
 
-export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) {
+export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfolded }: Props) {
   const options = useMemo(() => parseOptions(bet.options), [bet.options]);
   const totalSeconds = useMemo(() => windowSeconds(bet), [bet]);
   const [remaining, setRemaining] = useState(() => secondsLeft(bet.locks_at));
@@ -73,9 +83,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
     }).catch(() => {});
   }, [bet.state, bet.id, options, code]);
 
-  const progress = useMemo(() => {
-    return Math.min(1, (totalSeconds - remaining) / totalSeconds);
-  }, [remaining, totalSeconds]);
+  const totalVotes = Object.values(results).reduce((a, b) => a + b, 0);
 
   const pick = async (opt: string) => {
     if (!open || answered || submitting) return;
@@ -102,74 +110,81 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered }: Props) 
   };
 
   return (
-    <div data-testid="flash-bet-card" className="ui-surface mb-4 p-4 animate-in slide-in-from-top duration-300 relative z-10">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <p className="text-sm font-medium text-white flex-1">{bet.question}</p>
+    <motion.div
+      data-testid="flash-bet-card"
+      className="surface-elevated mb-4 p-5 relative z-10 border border-[rgba(213,0,249,0.3)]"
+      style={{ boxShadow: '0 0 24px rgba(213,0,249,0.15)' }}
+      variants={flashBetVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+    >
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <p className="text-lg font-bold text-center flex-1">{bet.question}</p>
         {open && (
-          <div className="relative h-12 w-12 shrink-0">
-            <svg className="h-12 w-12 -rotate-90" viewBox="0 0 36 36">
-              <circle cx="18" cy="18" r="16" fill="none" stroke="#2A2A32" strokeWidth="3" />
-              <circle
-                cx="18" cy="18" r="16" fill="none" stroke="#22c55e" strokeWidth="3"
-                strokeDasharray={`${progress * 100} 100`}
-                pathLength={100}
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-sm font-mono text-pitch-green">
-              {Math.max(0, remaining)}
-            </span>
-          </div>
+          <CountdownRing seconds={Math.max(0, remaining)} total={totalSeconds} size={60} />
         )}
       </div>
 
-      <p className="text-xs text-pitch-muted mb-3">
+      <p className="text-xs text-[var(--text-secondary)] mb-4 text-center">
         Wager: {bet.wager_amount} PC · Win {bet.wager_amount * 2} PC · +0.5 PP if correct
-        {open && <span className="text-pitch-green"> · Tap Yes or No</span>}
+        {open && <span className="text-[var(--pr-green)]"> · Tap to answer</span>}
       </p>
 
       {locked && !answered && !resolved && (
-        <p className="text-xs text-pitch-amber mb-2">Voting closed — waiting for result…</p>
+        <p className="text-xs text-[var(--pr-gold)] mb-2 text-center">Voting closed — waiting for result…</p>
       )}
 
       <div className="grid gap-2">
-        {options.map((opt) => {
+        {options.map((opt, i) => {
+          const display = blindfolded && open && !answered ? '???' : opt;
           const chosen = answered === opt;
           const correct = resolved && bet.correct_option === opt;
           const wrong = resolved && chosen && !correct;
           const canPick = open && !answered && !submitting;
+          const voteCount = results[opt] ?? 0;
+          const pct = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+
           return (
-            <button
-              key={opt}
-              type="button"
-              disabled={!canPick}
-              onClick={() => pick(opt)}
-              className={`min-h-11 rounded-lg px-3 text-sm font-medium transition-colors ${
-                correct ? 'bg-pitch-green/20 border border-pitch-green text-pitch-green'
-                  : wrong ? 'bg-red-500/20 border border-red-500 text-red-300'
-                  : chosen ? 'bg-pitch-green text-pitch-black'
-                  : canPick
-                    ? 'bg-pitch-card border-2 border-pitch-green text-white hover:bg-pitch-green/10 cursor-pointer'
-                    : 'bg-pitch-card border border-pitch-border text-pitch-muted'
-              }`}
-            >
-              {opt}
-              {(locked || resolved) && results[opt] != null && (
-                <span className="ml-2 text-xs text-pitch-muted">({results[opt]})</span>
+            <div key={opt} className="relative">
+              {(locked || resolved) && totalVotes > 0 && (
+                <div
+                  className="absolute inset-0 rounded-[var(--radius-md)] bg-[var(--pr-purple)] opacity-10"
+                  style={{ width: `${pct}%` }}
+                />
               )}
-            </button>
+              <Button
+                variant={chosen && !resolved ? 'primary' : 'secondary'}
+                size="lg"
+                fullWidth
+                data-testid={blindfolded && open ? `blindfold-option-${i}` : undefined}
+                disabled={!canPick}
+                onClick={() => pick(opt)}
+                className={`relative z-10 ${
+                  correct ? 'border-[var(--pr-green)] !bg-[rgba(0,230,118,0.15)] !text-[var(--pr-green)]'
+                    : wrong ? 'flash-wrong !border-[var(--pr-red)] !text-[var(--pr-red)]'
+                    : ''
+                } ${blindfolded && open && !answered ? 'blur-sm' : ''}`}
+              >
+                {display}
+                {(locked || resolved) && results[opt] != null && (
+                  <span className="ml-2 text-xs opacity-70">({results[opt]}{totalVotes > 0 ? ` · ${pct}%` : ''})</span>
+                )}
+              </Button>
+            </div>
           );
         })}
       </div>
 
       {answered && !resolved && (
-        <p className="mt-3 text-center text-sm text-pitch-green">Your pick: {answered}</p>
+        <p className="mt-3 text-center text-sm text-[var(--pr-green)] font-semibold">Your pick: {answered}</p>
       )}
 
       {resolved && myAnswer?.pp_change != null && myAnswer.pp_change !== 0 && (
-        <p className={`mt-3 text-center text-sm font-bold ${myAnswer.pp_change > 0 ? 'text-pitch-green' : 'text-red-400'}`}>
+        <p className={`mt-3 text-center text-sm font-bold ${myAnswer.pp_change > 0 ? 'text-[var(--pr-green)]' : 'text-[var(--pr-red)]'}`}>
           {myAnswer.pp_change > 0 ? `+${myAnswer.pp_change} PP 🎉` : `${myAnswer.pp_change} PP`}
         </p>
       )}
-    </div>
+    </motion.div>
   );
 }

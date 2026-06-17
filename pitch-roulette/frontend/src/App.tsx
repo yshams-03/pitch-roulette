@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Layout } from './components/Layout';
+import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { useAuthStore } from './store/authStore';
+import { setAnalyticsTokenProvider, trackPageView } from './lib/analytics';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
@@ -15,20 +16,35 @@ import { JoinRoomPage } from './pages/JoinRoomPage';
 import { RoomLobbyPage } from './pages/RoomLobbyPage';
 import { RoomPredictPage } from './pages/RoomPredictPage';
 import { RoomResultsPage } from './pages/RoomResultsPage';
+import { RoomDraftPage } from './pages/RoomDraftPage';
 import { RoomLivePage } from './pages/RoomLivePage';
 import { HostPanelPage } from './pages/HostPanelPage';
 import { DemoSandboxPage } from './pages/DemoSandboxPage';
 
+function AnalyticsListener() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
+
 export default function App() {
   const init = useAuthStore((s) => s.init);
+  const session = useAuthStore((s) => s.session);
 
   useEffect(() => {
     init();
   }, [init]);
 
+  useEffect(() => {
+    setAnalyticsTokenProvider(() => useAuthStore.getState().session?.access_token ?? null);
+  }, [session?.access_token]);
+
   return (
     <BrowserRouter>
-      <Layout>
+      <AnalyticsListener />
+      <AppLayout>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/auth/login" element={<LoginPage />} />
@@ -46,6 +62,7 @@ export default function App() {
 
           <Route path="/room/:code/lobby" element={<ProtectedRoute><RoomLobbyPage /></ProtectedRoute>} />
           <Route path="/room/:code/predict" element={<ProtectedRoute><RoomPredictPage /></ProtectedRoute>} />
+          <Route path="/room/:code/draft" element={<ProtectedRoute><RoomDraftPage /></ProtectedRoute>} />
           <Route path="/room/:code/live" element={<ProtectedRoute><RoomLivePage /></ProtectedRoute>} />
           <Route path="/room/:code/results" element={<RoomResultsPage />} />
           <Route path="/host/:code" element={<ProtectedRoute><HostPanelPage /></ProtectedRoute>} />
@@ -53,9 +70,9 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Layout>
+      </AppLayout>
       <Toaster position="top-center" toastOptions={{
-        style: { background: '#1A1A1F', color: '#fff', border: '1px solid #2A2A32' },
+        style: { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' },
       }} />
     </BrowserRouter>
   );

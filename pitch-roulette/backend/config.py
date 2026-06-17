@@ -42,6 +42,9 @@ class Settings:
         self.ESPN_BASE_URL: str = os.getenv("ESPN_BASE_URL", "https://site.api.espn.com")
         self.DEFAULT_BOT_DIFFICULTY: str = os.getenv("DEFAULT_BOT_DIFFICULTY", "medium")
         self.MAX_BOTS_PER_ROOM: int = int(os.getenv("MAX_BOTS_PER_ROOM", "10"))
+        self.ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+        self.SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
+        self.ESPN_SSL_VERIFY: bool = _env_bool("ESPN_SSL_VERIFY", "true")
         self.CACHE_TTL_STANDINGS: int = 300
         self.CACHE_TTL_SCHEDULE: int = 120
         self.CACHE_TTL_LIVE: int = 30

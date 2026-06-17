@@ -1,4 +1,5 @@
-export type RoomState = 'LOBBY' | 'PREDICTING' | 'CLOSED' | 'LIVE' | 'FULL_TIME' | 'RESULTS';
+export type RoomState = 'LOBBY' | 'PREDICTING' | 'CLOSED' | 'DRAFTING' | 'LIVE' | 'FULL_TIME' | 'RESULTS';
+export type Side = 'HOME' | 'AWAY';
 export type PredictedOutcome = 'HOME_WIN' | 'DRAW' | 'AWAY_WIN';
 export type LeaderboardPeriod = 'alltime' | 'month' | 'week';
 export type FlashBetState = 'PENDING' | 'OPEN' | 'LOCKED' | 'RESOLVED';
@@ -111,6 +112,7 @@ export interface Room {
   actual_home_goals: number | null;
   actual_away_goals: number | null;
   created_at: string;
+  draft_started_at?: string | null;
   players?: RoomPlayer[];
   predictions?: Prediction[];
 }
@@ -126,6 +128,8 @@ export interface RoomPlayer {
   avatar_color?: string;
   session_pp?: number;
   session_pc?: number;
+  assigned_side?: Side;
+  side_swap_used?: boolean;
 }
 
 export interface Prediction {
@@ -185,6 +189,65 @@ export interface FlashBetAnswer {
   answered_at: string;
   username?: string;
   display_name?: string;
+}
+
+export type SabotageType =
+  | 'BLINDFOLD'
+  | 'TAX'
+  | 'SILENCE'
+  | 'JINX'
+  | 'MIRROR'
+  | 'DOUBLE_OR_NOTHING';
+
+export type SabotageState = 'ACTIVE' | 'TRIGGERED' | 'EXPIRED';
+
+export interface SabotageShopItem {
+  type: SabotageType;
+  label: string;
+  emoji: string;
+  pc_cost: number;
+  description: string;
+  duration?: string;
+}
+
+export interface Sabotage {
+  id: string;
+  room_id: string;
+  buyer_id: string;
+  target_id: string;
+  sabotage_type: SabotageType;
+  pc_cost: number;
+  state: SabotageState;
+  flash_bet_id?: string | null;
+  purchased_at: string;
+  triggered_at?: string | null;
+  expires_at?: string | null;
+  label?: string;
+  emoji?: string;
+}
+
+export interface DraftPick {
+  id: string;
+  room_id: string;
+  user_id: string;
+  player_id: string;
+  player_name: string;
+  player_team: Side;
+  position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  pick_order: 1 | 2 | 3;
+  pc_earned: number;
+  picked_at: string;
+  display_name?: string;
+}
+
+export interface SquadPlayer {
+  player_id: string;
+  name: string;
+  team: Side;
+  position: 'GK' | 'DEF' | 'MID' | 'FWD';
+  shirt_number: number;
+  available: boolean;
+  taken_by_nickname?: string;
 }
 
 export interface RoomMessage {

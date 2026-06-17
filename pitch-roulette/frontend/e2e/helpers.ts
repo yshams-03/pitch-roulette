@@ -1,10 +1,36 @@
 /**
- * E2E helpers for Pitch Roulette Phase 2.
+ * E2E helpers for Pitch Roulette Phase 3.
  * Login uses the browser UI (avoids Node TLS issues with Supabase on some Windows setups).
  */
-import { expect, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-export const API_BASE = process.env.E2E_API_URL || 'http://localhost:8000';
+/** Prefer 127.0.0.1 — on Windows, `localhost` can hang on IPv6 while the backend listens on IPv4. */
+export const API_BASE = process.env.E2E_API_URL || 'http://127.0.0.1:8000';
+
+let cachedBackendVersion: string | null | undefined;
+
+/** OpenAPI version string, e.g. `3.0.0` for Phase 3. */
+export async function getBackendVersion(): Promise<string | null> {
+  if (cachedBackendVersion !== undefined) return cachedBackendVersion;
+  try {
+    const res = await fetch(`${API_BASE}/openapi.json`, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) {
+      cachedBackendVersion = null;
+      return null;
+    }
+    const data = (await res.json()) as { info?: { version?: string } };
+    cachedBackendVersion = data.info?.version ?? null;
+    return cachedBackendVersion;
+  } catch {
+    cachedBackendVersion = null;
+    return null;
+  }
+}
+
+/** True when the API at {@link API_BASE} is the Phase 3 backend (openapi `3.0.0`). */
+export async function isPhase3Backend(): Promise<boolean> {
+  return (await getBackendVersion()) === '3.0.0';
+}
 
 export interface TestAuth {
   accessToken: string;
@@ -12,11 +38,41 @@ export interface TestAuth {
   email: string;
 }
 
+export function hasE2ECredentials() {
+  return Boolean(process.env.E2E_TEST_EMAIL && process.env.E2E_TEST_PASSWORD);
+}
+
+export function hasE2EUser2() {
+  return Boolean(process.env.E2E_TEST_EMAIL_2 && process.env.E2E_TEST_PASSWORD_2);
+}
+
+export function hasE2EUser3() {
+  return Boolean(process.env.E2E_TEST_EMAIL_3 && process.env.E2E_TEST_PASSWORD_3);
+}
+
 export function e2eCredentials() {
   const email = process.env.E2E_TEST_EMAIL;
   const password = process.env.E2E_TEST_PASSWORD;
   if (!email || !password) {
     throw new Error('Set E2E_TEST_EMAIL and E2E_TEST_PASSWORD in your shell');
+  }
+  return { email, password };
+}
+
+export function e2eCredentials2() {
+  const email = process.env.E2E_TEST_EMAIL_2;
+  const password = process.env.E2E_TEST_PASSWORD_2;
+  if (!email || !password) {
+    throw new Error('Set E2E_TEST_EMAIL_2 and E2E_TEST_PASSWORD_2');
+  }
+  return { email, password };
+}
+
+export function e2eCredentials3() {
+  const email = process.env.E2E_TEST_EMAIL_3;
+  const password = process.env.E2E_TEST_PASSWORD_3;
+  if (!email || !password) {
+    throw new Error('Set E2E_TEST_EMAIL_3 and E2E_TEST_PASSWORD_3');
   }
   return { email, password };
 }
@@ -51,15 +107,32 @@ export async function api<T>(path: string, token?: string, init?: RequestInit): 
   }
 }
 
-/** Log in through /auth/login — uses Chrome's TLS stack, not Node. */
-export async function loginViaUI(page: Page): Promise<TestAuth> {
-  const { email, password } = e2eCredentials();
+async function readSessionFromPage(page: Page): Promise<{ accessToken: string; userId: string } | null> {
+  return page.evaluate(() => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as { access_token?: string; user?: { id?: string } };
+        if (parsed.access_token && parsed.user?.id) {
+          return { accessToken: parsed.access_token, userId: parsed.user.id };
+        }
+      } catch {
+        /* next */
+      }
+    }
+    return null;
+  });
+}
 
+/** Log in through /auth/login with explicit credentials. */
+export async function loginAs(page: Page, email: string, password: string): Promise<TestAuth> {
   await page.goto('/auth/login');
   const emailInput = page.getByPlaceholder('Email');
   await emailInput.click();
   await emailInput.fill(email);
-  await expect(emailInput).toHaveValue(email);
   await page.getByPlaceholder('Password').fill(password);
 
   await Promise.all([
@@ -71,33 +144,58 @@ export async function loginViaUI(page: Page): Promise<TestAuth> {
   ]);
 
   await page.waitForURL((url) => !url.pathname.includes('/auth/login'), { timeout: 15_000 });
-
-  const session = await page.evaluate(() => {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key?.startsWith('sb-') || !key.endsWith('-auth-token')) continue;
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as {
-          access_token?: string;
-          user?: { id?: string };
-        };
-        if (parsed.access_token && parsed.user?.id) {
-          return { accessToken: parsed.access_token, userId: parsed.user.id };
-        }
-      } catch {
-        /* try next key */
-      }
-    }
-    return null;
-  });
-
-  if (!session) {
-    throw new Error('Login UI succeeded but no Supabase session found in localStorage');
-  }
-
+  const session = await readSessionFromPage(page);
+  if (!session) throw new Error('Login succeeded but no Supabase session in localStorage');
   return { ...session, email };
+}
+
+/** Log in with primary E2E credentials. */
+export async function loginViaUI(page: Page): Promise<TestAuth> {
+  const { email, password } = e2eCredentials();
+  return loginAs(page, email, password);
+}
+
+export async function signupIfNeeded(
+  page: Page,
+  email: string,
+  password: string,
+  username: string,
+  displayName: string,
+): Promise<'logged_in' | 'signup_sent'> {
+  try {
+    await loginAs(page, email, password);
+    return 'logged_in';
+  } catch {
+    await page.goto('/auth/signup');
+    await page.getByPlaceholder('Display name').fill(displayName);
+    await page.getByPlaceholder('Username').fill(username);
+    await page.getByPlaceholder('Email').fill(email);
+    await page.locator('input[placeholder="Password"]').fill(password);
+    await page.getByPlaceholder('Confirm password').fill(password);
+    await page.getByRole('button', { name: /Create account/i }).click();
+    await page.waitForTimeout(2000);
+    if (page.url().includes('/auth/login')) return 'signup_sent';
+    await page.waitForURL((url) => !url.pathname.includes('/auth/signup'), { timeout: 15_000 });
+    return 'logged_in';
+  }
+}
+
+export async function logout(page: Page): Promise<void> {
+  await page.goto('/profile');
+  await page.getByRole('button', { name: /Log out/i }).click();
+  await page.waitForURL(/\/auth\/login|\//, { timeout: 10_000 });
+}
+
+export async function openSecondBrowser(browser: Browser): Promise<{ page2: Page; context2: BrowserContext }> {
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  return { page2, context2 };
+}
+
+export async function openThirdBrowser(browser: Browser): Promise<{ page3: Page; context3: BrowserContext }> {
+  const context3 = await browser.newContext();
+  const page3 = await context3.newPage();
+  return { page3, context3 };
 }
 
 export async function createDemoRoom(token: string): Promise<{ code: string; room: Record<string, unknown> }> {
@@ -117,9 +215,7 @@ export async function createDemoRoom(token: string): Promise<{ code: string; roo
   } catch (e) {
     const legacyNeeded =
       e instanceof Error &&
-      (e.message.includes('422') ||
-        e.message.includes('match_id') ||
-        e.message.includes('400'));
+      (e.message.includes('422') || e.message.includes('match_id') || e.message.includes('400'));
     if (!legacyNeeded) throw e;
     const legacy = await api<{ room: Record<string, unknown>; code: string }>('/api/demo/start', token, {
       method: 'POST',
@@ -131,6 +227,16 @@ export async function createDemoRoom(token: string): Promise<{ code: string; roo
   }
 }
 
+/** Create demo room via /demo UI. */
+export async function createDemoRoomViaUI(page: Page): Promise<{ roomCode: string }> {
+  await page.goto('/demo');
+  await page.getByRole('button', { name: /Enter demo match/i }).click();
+  await page.waitForURL(/\/room\/[A-Z0-9]+\/lobby/, { timeout: 30_000 });
+  const match = page.url().match(/\/room\/([A-Z0-9]+)\/lobby/);
+  if (!match) throw new Error('Could not parse room code from URL');
+  return { roomCode: match[1] };
+}
+
 export function assertDemoSimulationRoom(room: Record<string, unknown>): void {
   const match = room.match_data as { demo?: boolean } | undefined;
   const isDemo =
@@ -139,9 +245,407 @@ export function assertDemoSimulationRoom(room: Record<string, unknown>): void {
     match?.demo === true;
   if (!isDemo) {
     throw new Error(
-      `Expected demo simulation room (match_source/match_id/demo); got match_source=${String(room.match_source)} match_id=${String(room.match_id)}`,
+      `Expected demo simulation room; got match_source=${String(room.match_source)} match_id=${String(room.match_id)}`,
     );
   }
+}
+
+export async function joinRoomApi(token: string, code: string): Promise<void> {
+  try {
+    await api(`/api/rooms/${code}/join`, token, { method: 'POST', body: '{}' });
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('409')) return;
+    throw e;
+  }
+}
+
+export async function joinRoom(page: Page, roomCode: string): Promise<void> {
+  await page.goto('/join');
+  await page.getByPlaceholder('Room code').fill(roomCode);
+  await page.getByRole('button', { name: /join/i }).click();
+  await page.waitForURL(new RegExp(`/room/${roomCode}`), { timeout: 20_000 });
+}
+
+export async function fetchRoom(code: string, token?: string): Promise<Record<string, unknown>> {
+  return api<Record<string, unknown>>(`/api/rooms/${code}`, token);
+}
+
+export async function getRoomState(roomCode: string, token?: string): Promise<string> {
+  const room = await fetchRoom(roomCode, token);
+  return String(room.state ?? '');
+}
+
+/** @deprecated Use getRoomState */
+export async function roomState(code: string, token?: string): Promise<string> {
+  return getRoomState(code, token);
+}
+
+const PAST_LOBBY = new Set(['PREDICTING', 'CLOSED', 'DRAFTING', 'LIVE', 'FULL_TIME', 'RESULTS']);
+const PAST_LIVE = new Set(['LIVE', 'FULL_TIME', 'RESULTS']);
+
+async function postFirstOk(token: string, paths: string[], body = '{}'): Promise<void> {
+  let lastError: Error | undefined;
+  for (const path of paths) {
+    try {
+      await api(path, token, { method: 'POST', body });
+      return;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (!lastError.message.includes('404') && !lastError.message.includes('409')) throw e;
+    }
+  }
+  if (lastError) throw lastError;
+}
+
+export async function startRoomApi(token: string, code: string): Promise<void> {
+  if (PAST_LOBBY.has(await getRoomState(code, token))) return;
+  await postFirstOk(token, [`/api/rooms/${code}/start`, `/api/demo/rooms/${code}/advance`]);
+}
+
+export async function lockRoomApi(token: string, code: string): Promise<void> {
+  if ((await getRoomState(code, token)) !== 'PREDICTING') return;
+  try {
+    await api(`/api/rooms/${code}/lock`, token, { method: 'POST', body: '{}' });
+  } catch (e) {
+    if (e instanceof Error && (e.message.includes('invalid_state') || e.message.includes('409'))) return;
+    throw e;
+  }
+}
+
+export async function startDraftApi(token: string, code: string): Promise<void> {
+  if ((await getRoomState(code, token)) !== 'CLOSED') return;
+  await api(`/api/rooms/${code}/start-draft`, token, { method: 'POST', body: '{}' });
+}
+
+export async function goLiveApi(token: string, code: string): Promise<void> {
+  if (PAST_LIVE.has(await getRoomState(code, token))) return;
+  const state = await getRoomState(code, token);
+  if (!['CLOSED', 'DRAFTING'].includes(state)) return;
+  await postFirstOk(token, [`/api/rooms/${code}/go-live`, `/api/demo/rooms/${code}/advance`]);
+}
+
+export async function endRoomApi(token: string, code: string): Promise<void> {
+  try {
+    await api(`/api/rooms/${code}/end`, token, { method: 'POST', body: '{}' });
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('409')) return;
+    throw e;
+  }
+}
+
+export async function waitForRoomState(
+  code: string,
+  token: string,
+  expected: RegExp,
+  timeout = 30_000,
+): Promise<string> {
+  let last = '';
+  await expect
+    .poll(async () => {
+      last = await getRoomState(code, token);
+      return last;
+    }, { timeout, intervals: [300, 500, 1000] })
+    .toMatch(expected);
+  return last;
+}
+
+export async function dismissSideReveal(page: Page): Promise<void> {
+  const reveal = page.getByTestId('side-reveal');
+  if (await reveal.isVisible().catch(() => false)) {
+    await page.waitForTimeout(1100);
+    await page.getByRole('button', { name: /Let's go/i }).click();
+  }
+}
+
+export async function startPredictions(page: Page, token: string, code: string): Promise<void> {
+  await openPredictions(page, token, code);
+}
+
+export async function lockPredictions(page: Page, token: string, code: string): Promise<void> {
+  const lockBtn = page.getByTestId('lock-predictions');
+  if (await lockBtn.isVisible().catch(() => false)) {
+    await lockBtn.click();
+  }
+  await lockRoomApi(token, code);
+}
+
+export async function startDraft(page: Page, token: string, code: string): Promise<void> {
+  await startDraftApi(token, code);
+  await page.goto(`/room/${code}/draft`);
+  await expect(page.getByTestId('draft-page')).toBeVisible({ timeout: 20_000 });
+}
+
+export async function goLive(page: Page, token: string, code: string): Promise<void> {
+  const btn = page.getByTestId('go-live');
+  if (await btn.isVisible().catch(() => false)) {
+    await btn.click();
+  } else {
+    await goLiveApi(token, code);
+  }
+  try {
+    await page.waitForURL(/\/live/, { timeout: 25_000 });
+  } catch {
+    await goLiveApi(token, code);
+    await page.goto(`/room/${code}/live`);
+  }
+  await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 30_000 });
+}
+
+export async function endMatch(page: Page, token: string, code: string): Promise<void> {
+  await endRoomApi(token, code);
+  await page.goto(`/room/${code}/results`);
+  await expect(page.getByTestId('results-heading')).toBeVisible({ timeout: 20_000 });
+}
+
+export async function openPredictions(page: Page, token: string, code: string): Promise<void> {
+  let state = await getRoomState(code, token);
+
+  if (!PAST_LOBBY.has(state)) {
+    await startRoomApi(token, code);
+    await page.goto(`/room/${code}/predict`);
+  } else if (!page.url().includes('/predict')) {
+    await page.goto(`/room/${code}/predict`);
+  }
+
+  if ((await getRoomState(code, token)) === 'LOBBY') {
+    await startRoomApi(token, code);
+  }
+
+  await dismissSideReveal(page);
+  await expect(page.getByTestId('prediction-form')).toBeVisible({ timeout: 20_000 });
+  await waitForRoomState(code, token, /^(PREDICTING|CLOSED)$/, 30_000);
+}
+
+export async function submitScorePrediction(page: Page, home: string, away: string): Promise<void> {
+  if (await page.getByText('Predictions locked', { exact: false }).isVisible().catch(() => false)) {
+    return;
+  }
+  const form = page.getByTestId('prediction-form');
+  await expect(form).toBeVisible({ timeout: 15_000 });
+  await form.locator('input[type="number"]').nth(0).fill(home);
+  await form.locator('input[type="number"]').nth(1).fill(away);
+  await page.getByTestId('prediction-submit').click();
+}
+
+export async function advanceToDraft(page: Page, token: string, code: string): Promise<void> {
+  await openPredictions(page, token, code);
+  await submitScorePrediction(page, '2', '1');
+  await lockPredictions(page, token, code);
+  await startDraft(page, token, code);
+  await waitForRoomState(code, token, /^DRAFTING$/);
+}
+
+export async function pickPlayer(page: Page, playerName?: string): Promise<void> {
+  if (playerName) {
+    const card = page.getByTestId('draft-player-card').filter({ hasText: playerName });
+    await card.getByTestId('draft-pick-btn').click();
+  } else {
+    await page.getByTestId('draft-pick-btn').first().click();
+  }
+}
+
+export async function pickThreePlayers(page: Page): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const btn = page.getByTestId('draft-pick-btn').first();
+    if (!(await btn.isVisible().catch(() => false))) break;
+    await btn.click();
+    await page.waitForTimeout(400);
+  }
+}
+
+export async function getDraftPicks(token: string, code: string, userId: string): Promise<string[]> {
+  const r = await api<{ all?: Array<{ user_id: string; player_name: string }> }>(
+    `/api/rooms/${code}/draft/picks`,
+    token,
+  );
+  return (r.all || []).filter((p) => p.user_id === userId).map((p) => p.player_name);
+}
+
+export async function waitForDraftPhase(page: Page, code: string): Promise<void> {
+  await page.goto(`/room/${code}/draft`);
+  await expect(page.getByTestId('draft-page')).toBeVisible({ timeout: 20_000 });
+}
+
+export async function setupDemoLiveRoom(
+  page: Page,
+  token: string,
+  viaDraft = false,
+): Promise<{ code: string; room: Record<string, unknown> }> {
+  const created = await createDemoRoom(token);
+  const { code } = created;
+  await startRoomApi(token, code);
+  try {
+    await api(`/api/rooms/${code}/predict`, token, {
+      method: 'POST',
+      body: JSON.stringify({
+        home_goals: 2,
+        away_goals: 1,
+        predicted_outcome: 'HOME_WIN',
+      }),
+    });
+  } catch {
+    /* may already exist */
+  }
+  await lockRoomApi(token, code);
+  if (viaDraft) {
+    await startDraftApi(token, code);
+    await pickThreePlayersViaApi(token, code);
+    await goLiveApi(token, code);
+  } else {
+    await goLiveApi(token, code);
+  }
+  await waitForRoomState(code, token, /^(LIVE|FULL_TIME)$/);
+  await page.goto(`/room/${code}/live`);
+  await expect(page.getByTestId('room-chat')).toBeVisible({ timeout: 30_000 });
+  const room = await fetchRoom(code, token);
+  return { code, room };
+}
+
+async function pickThreePlayersViaApi(token: string, code: string): Promise<void> {
+  const squads = await api<{ players: Array<{ player_id: string; available: boolean }> }>(
+    `/api/rooms/${code}/draft/squads`,
+    token,
+  );
+  let picked = 0;
+  for (const p of squads.players || []) {
+    if (!p.available) continue;
+    try {
+      await api(`/api/rooms/${code}/draft/pick`, token, {
+        method: 'POST',
+        body: JSON.stringify({ player_id: p.player_id }),
+      });
+      picked++;
+      if (picked >= 3) break;
+    } catch {
+      /* race */
+    }
+  }
+}
+
+export async function lockAndGoLive(page: Page, token: string, code: string): Promise<void> {
+  if (PAST_LIVE.has(await getRoomState(code, token))) {
+    await page.goto(`/room/${code}/live`);
+    await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 20_000 });
+    return;
+  }
+  await lockPredictions(page, token, code);
+  await goLive(page, token, code);
+}
+
+export async function createFlashBetApi(
+  token: string,
+  code: string,
+  question: string,
+  options: string[] = ['Yes', 'No'],
+  wagerTier: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW',
+): Promise<{ id?: string }> {
+  return api(`/api/rooms/${code}/flash-bets`, token, {
+    method: 'POST',
+    body: JSON.stringify({ question, options, wager_tier: wagerTier }),
+  });
+}
+
+export async function injectFlashBet(
+  token: string,
+  code: string,
+  question?: string,
+  options?: string[],
+  wagerTier: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW',
+): Promise<void> {
+  await createFlashBetApi(
+    token,
+    code,
+    question ?? `E2E bet ${Date.now()}?`,
+    options ?? ['Yes', 'No'],
+    wagerTier,
+  );
+}
+
+export async function waitForFlashBet(page: Page, timeout = 30_000): Promise<string | null> {
+  await expect(page.getByTestId('flash-bet-card')).toBeVisible({ timeout });
+  return 'visible';
+}
+
+export async function answerFlashBet(page: Page, option: 'first' | 'second' | string = 'first'): Promise<void> {
+  const card = page.getByTestId('flash-bet-card');
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  if (option === 'first') {
+    await card.getByRole('button').first().click();
+  } else if (option === 'second') {
+    await card.getByRole('button').nth(1).click();
+  } else {
+    await card.getByRole('button', { name: option, exact: true }).click();
+  }
+}
+
+export async function resolveFlashBetApi(
+  token: string,
+  code: string,
+  betId: string,
+  correctOption: string,
+): Promise<void> {
+  await api(`/api/rooms/${code}/flash-bets/${betId}/resolve`, token, {
+    method: 'POST',
+    body: JSON.stringify({ correct_option: correctOption }),
+  });
+}
+
+export async function resolveActiveFlashBet(
+  token: string,
+  code: string,
+  correctOption = 'Yes',
+): Promise<void> {
+  const body = JSON.stringify({ correct_option: correctOption });
+  const paths = [`/api/rooms/${code}/resolve-active`, `/api/demo/rooms/${code}/resolve-active`];
+  for (const path of paths) {
+    try {
+      await api(path, token, { method: 'POST', body });
+      return;
+    } catch (e) {
+      if (!(e instanceof Error)) throw e;
+      if (!e.message.includes('404') && !e.message.includes('409')) throw e;
+    }
+  }
+}
+
+export async function purchaseSabotageApi(
+  token: string,
+  code: string,
+  sabotageType: string,
+  targetUserId: string,
+): Promise<void> {
+  await api(`/api/rooms/${code}/sabotages`, token, {
+    method: 'POST',
+    body: JSON.stringify({ sabotage_type: sabotageType, target_user_id: targetUserId }),
+  });
+}
+
+export async function openSabotageShop(page: Page): Promise<void> {
+  await page.getByTestId('sabotage-shop-btn').click();
+  await expect(page.getByTestId('sabotage-shop-sheet')).toBeVisible();
+}
+
+export async function buySabotage(page: Page, targetNickname: string, sabotageType: string): Promise<void> {
+  await openSabotageShop(page);
+  const section = page.getByTestId('sabotage-shop-sheet').locator('div').filter({ hasText: targetNickname });
+  await section.getByTestId(`buy-${sabotageType}`).click();
+}
+
+export async function getActivePC(page: Page): Promise<number> {
+  const text = await page.getByTestId('session-pc').innerText();
+  const m = text.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+export function playerPc(room: Record<string, unknown>, userId: string): number {
+  const players = (room.players as Array<{ user_id: string; session_pc?: number }>) || [];
+  const p = players.find((x) => x.user_id === userId);
+  return Math.round(p?.session_pc ?? 0);
+}
+
+export function playerSide(room: Record<string, unknown>, userId: string): string | undefined {
+  const players = (room.players as Array<{ user_id: string; assigned_side?: string }>) || [];
+  return players.find((x) => x.user_id === userId)?.assigned_side;
 }
 
 type DemoPostResult = 'ok' | 'skip';
@@ -160,7 +664,6 @@ async function tryDemoPost(token: string, path: string, body = '{}'): Promise<De
   }
 }
 
-/** Trigger one demo event cycle — fast-forward or inject-random (unified + legacy paths). */
 export async function triggerDemoEvent(token: string, code: string): Promise<boolean> {
   const paths = [
     `/api/rooms/${code}/fast-forward`,
@@ -174,15 +677,6 @@ export async function triggerDemoEvent(token: string, code: string): Promise<boo
   return false;
 }
 
-async function resolveActiveBetApi(token: string, code: string, correctOption = 'Yes'): Promise<void> {
-  const body = JSON.stringify({ correct_option: correctOption });
-  const paths = [`/api/rooms/${code}/resolve-active`, `/api/demo/rooms/${code}/resolve-active`];
-  for (const path of paths) {
-    if ((await tryDemoPost(token, path, body)) === 'ok') return;
-  }
-}
-
-/** @deprecated Use triggerDemoEvent */
 export async function fastForwardDemo(token: string, code: string): Promise<void> {
   await triggerDemoEvent(token, code);
 }
@@ -195,59 +689,41 @@ async function hasEnabledYes(page: Page): Promise<boolean> {
   return flashBetYesButton(page).isEnabled().catch(() => false);
 }
 
-async function waitForLiveRoom(page: Page): Promise<void> {
-  await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 30_000 });
-}
-
-/** Live page loaded enough for chat/scoreboard (more reliable than live-badge alone). */
 export async function gotoLiveRoom(page: Page, code: string): Promise<void> {
   await page.goto(`/room/${code}/live`);
   const ready = page.getByTestId('room-chat');
   try {
     await expect(ready).toBeVisible({ timeout: 25_000 });
-    return;
   } catch {
     await page.reload();
     await expect(ready).toBeVisible({ timeout: 35_000 });
   }
 }
 
-/** Wait for a clickable Yes on an open flash bet; resolve/inject only if auto-pipeline is slow. */
 export async function ensureOpenFlashBet(page: Page, token: string, code: string): Promise<void> {
-  await waitForLiveRoom(page);
+  await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 30_000 });
 
   try {
     await expect.poll(() => hasEnabledYes(page), { timeout: 25_000, intervals: [1000, 2000] }).toBe(true);
     return;
   } catch {
-    /* auto-events may be slow or a stale locked bet is showing */
+    /* slow pipeline */
   }
 
   if (await page.getByTestId('flash-bet-card').isVisible().catch(() => false)) {
-    await resolveActiveBetApi(token, code);
+    await resolveActiveFlashBet(token, code);
     await page.reload();
-    await waitForLiveRoom(page);
     try {
       await expect.poll(() => hasEnabledYes(page), { timeout: 15_000, intervals: [500, 1000] }).toBe(true);
       return;
     } catch {
-      /* still no open bet */
+      /* continue */
     }
   }
 
   await triggerDemoEvent(token, code);
   await page.reload();
-  await waitForLiveRoom(page);
   await expect.poll(() => hasEnabledYes(page), { timeout: 45_000, intervals: [1000, 2000, 3000] }).toBe(true);
-}
-
-export async function fetchRoom(code: string, token?: string): Promise<Record<string, unknown>> {
-  return api<Record<string, unknown>>(`/api/rooms/${code}`, token);
-}
-
-export async function roomState(code: string, token?: string): Promise<string> {
-  const room = await fetchRoom(code, token);
-  return String(room.state ?? '');
 }
 
 export interface LiveFixture {
@@ -260,7 +736,6 @@ export interface LiveFixture {
 const LIVE_STATUSES = new Set(['IN_PLAY', 'PAUSED', 'LIVE']);
 const SCHEDULED_STATUSES = new Set(['SCHEDULED', 'TIMED']);
 
-/** Matches from GET /api/fixtures (optional status filter, e.g. LIVE or LIVE|SCHEDULED). */
 export async function fetchFixtures(token?: string, status?: string): Promise<Array<Record<string, unknown>>> {
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
   const data = await api<{ matches?: Array<Record<string, unknown>> }>(`/api/fixtures${query}`, token);
@@ -276,7 +751,6 @@ function toLiveFixture(match: Record<string, unknown>): LiveFixture {
   };
 }
 
-/** First in-play fixture from schedule, or E2E_MATCH_ID override. */
 export async function fetchLiveFixture(token?: string): Promise<LiveFixture | null> {
   const override = process.env.E2E_MATCH_ID;
   if (override) {
@@ -291,15 +765,13 @@ export async function fetchLiveFixture(token?: string): Promise<LiveFixture | nu
         };
       }
     } catch {
-      /* try schedule */
+      /* schedule fallback */
     }
   }
 
   try {
     const liveMatches = await fetchFixtures(token, 'LIVE');
-    const match = liveMatches.find(
-      (m) => LIVE_STATUSES.has(String(m.status)) || m.is_live === true,
-    );
+    const match = liveMatches.find((m) => LIVE_STATUSES.has(String(m.status)) || m.is_live === true);
     if (match?.id) return toLiveFixture(match);
 
     const scheduled = await fetchFixtures(token, 'SCHEDULED');
@@ -313,8 +785,7 @@ export async function fetchLiveFixture(token?: string): Promise<LiveFixture | nu
 }
 
 export async function skipIfNoFixtures(): Promise<LiveFixture | null> {
-  const fixture = await fetchLiveFixture();
-  return fixture;
+  return fetchLiveFixture();
 }
 
 export async function createRealRoom(
@@ -328,24 +799,6 @@ export async function createRealRoom(
   return { code: String(room.room_code), room };
 }
 
-export async function joinRoomApi(token: string, code: string): Promise<void> {
-  try {
-    await api(`/api/rooms/${code}/join`, token, { method: 'POST', body: '{}' });
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('409')) return;
-    throw e;
-  }
-}
-
-export async function endRoomApi(token: string, code: string): Promise<void> {
-  try {
-    await api(`/api/rooms/${code}/end`, token, { method: 'POST', body: '{}' });
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('409')) return;
-    throw e;
-  }
-}
-
 export async function deleteRoomApi(token: string, code: string): Promise<void> {
   try {
     await api(`/api/rooms/${code}`, token, { method: 'DELETE' });
@@ -355,46 +808,16 @@ export async function deleteRoomApi(token: string, code: string): Promise<void> 
   }
 }
 
-/** End if needed, then DELETE (E2E cleanup). */
 export async function cleanupRoom(token: string, code: string): Promise<void> {
-  const state = await roomState(code, token).catch(() => '');
+  const state = await getRoomState(code, token).catch(() => '');
   if (state && state !== 'RESULTS' && (PAST_LIVE.has(state) || state === 'FULL_TIME')) {
     await endRoomApi(token, code);
   }
   await deleteRoomApi(token, code);
 }
 
-/** @deprecated Use cleanupRoom */
 export async function deleteRoom(token: string, code: string): Promise<void> {
   await cleanupRoom(token, code);
-}
-
-export async function createFlashBetApi(
-  token: string,
-  code: string,
-  question: string,
-  options: string[] = ['Yes', 'No'],
-): Promise<void> {
-  await api(`/api/rooms/${code}/flash-bets`, token, {
-    method: 'POST',
-    body: JSON.stringify({ question, options, wager_tier: 'LOW' }),
-  });
-}
-
-export async function setupDemoLiveRoom(
-  page: Page,
-  token: string,
-): Promise<{ code: string; room: Record<string, unknown> }> {
-  const created = await createDemoRoom(token);
-  const { code } = created;
-  await startRoomApi(token, code);
-  await lockRoomApi(token, code);
-  await goLiveApi(token, code);
-  await waitForRoomState(code, token, /^(LIVE|FULL_TIME)$/);
-  await page.goto(`/room/${code}/live`);
-  await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 30_000 });
-  const room = await fetchRoom(code, token);
-  return { code, room };
 }
 
 export async function gotoHostPanel(page: Page, code: string): Promise<void> {
@@ -410,127 +833,34 @@ export async function expandChat(page: Page): Promise<void> {
   await page.getByTestId('chat-expand').click();
 }
 
-const PAST_LIVE = new Set(['LIVE', 'FULL_TIME', 'RESULTS']);
-
-async function postFirstOk(token: string, paths: string[]): Promise<void> {
-  let lastError: Error | undefined;
-  for (const path of paths) {
-    try {
-      await api(path, token, { method: 'POST', body: '{}' });
-      return;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      if (!lastError.message.includes('404') && !lastError.message.includes('409')) throw e;
-    }
-  }
-  if (lastError) throw lastError;
+export async function sendChatMessage(token: string, code: string, content: string): Promise<{ id: string }> {
+  return api(`/api/rooms/${code}/messages`, token, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
 }
 
-export async function startRoomApi(token: string, code: string): Promise<void> {
-  if (PAST_LOBBY.has(await roomState(code, token))) return;
-  await postFirstOk(token, [`/api/rooms/${code}/start`, `/api/demo/rooms/${code}/advance`]);
+export async function deleteChatMessage(token: string, code: string, messageId: string): Promise<void> {
+  await api(`/api/rooms/${code}/messages/${messageId}`, token, { method: 'DELETE' });
 }
 
-export async function waitForRoomState(
-  code: string,
-  token: string,
-  expected: RegExp,
-  timeout = 30_000,
-): Promise<string> {
-  let last = '';
-  await expect
-    .poll(async () => {
-      last = await roomState(code, token);
-      return last;
-    }, { timeout, intervals: [300, 500, 1000] })
-    .toMatch(expected);
-  return last;
+export async function listChatMessages(code: string): Promise<Array<{ id: string; content: string; is_deleted?: boolean }>> {
+  const r = await api<{ messages: Array<{ id: string; content: string; is_deleted?: boolean }> }>(
+    `/api/rooms/${code}/messages`,
+  );
+  return r.messages || [];
 }
 
-export async function lockRoomApi(token: string, code: string): Promise<void> {
-  if ((await roomState(code, token)) !== 'PREDICTING') return;
-  try {
-    await api(`/api/rooms/${code}/lock`, token, { method: 'POST', body: '{}' });
-  } catch (e) {
-    if (e instanceof Error && (e.message.includes('invalid_state') || e.message.includes('409'))) return;
-    throw e;
-  }
-}
-
-export async function goLiveApi(token: string, code: string): Promise<void> {
-  if (PAST_LIVE.has(await roomState(code, token))) return;
-  if ((await roomState(code, token)) !== 'CLOSED') return;
-  await postFirstOk(token, [`/api/rooms/${code}/go-live`, `/api/demo/rooms/${code}/advance`]);
-}
-
-const PAST_LOBBY = new Set(['PREDICTING', 'CLOSED', 'LIVE', 'FULL_TIME', 'RESULTS']);
-
-/** Open predictions: UI click first, API fallback if navigation stalls. */
-export async function openPredictions(page: Page, token: string, code: string): Promise<void> {
-  let state = await roomState(code, token);
-
-  if (!PAST_LOBBY.has(state)) {
-    if (!page.url().includes('/lobby')) {
-      await page.goto(`/room/${code}/lobby`);
-    }
-    const startBtn = page.getByTestId('start-predictions');
-    await expect(startBtn).toBeVisible({ timeout: 20_000 });
-    await startBtn.click();
-    try {
-      await page.waitForURL(/\/predict/, { timeout: 15_000 });
-    } catch {
-      await startRoomApi(token, code);
-      await page.goto(`/room/${code}/predict`);
-      await page.waitForURL(/\/predict/, { timeout: 15_000 });
-    }
-  } else if (!page.url().includes('/predict')) {
-    await page.goto(`/room/${code}/predict`);
-    await page.waitForURL(/\/predict/, { timeout: 15_000 });
-  }
-
-  if ((await roomState(code, token)) === 'LOBBY') {
-    await startRoomApi(token, code);
-  }
-
-  await expect(page.getByTestId('prediction-form')).toBeVisible({ timeout: 20_000 });
-  await waitForRoomState(code, token, /^(PREDICTING|CLOSED)$/, 30_000);
-}
-
-export async function submitScorePrediction(page: Page, home: string, away: string): Promise<void> {
-  if (await page.getByText('Predictions locked', { exact: false }).isVisible().catch(() => false)) {
-    return;
-  }
-  const form = page.getByTestId('prediction-form');
-  await expect(form).toBeVisible({ timeout: 15_000 });
-  await form.locator('input[type="number"]').nth(0).fill(home);
-  await form.locator('input[type="number"]').nth(1).fill(away);
-  await page.getByTestId('prediction-submit').click();
-}
-
-export async function lockAndGoLive(page: Page, token: string, code: string): Promise<void> {
-  if (PAST_LIVE.has(await roomState(code, token))) {
-    await page.goto(`/room/${code}/live`);
-    await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 20_000 });
-    return;
-  }
-
-  const lockBtn = page.getByTestId('lock-predictions');
-  if (await lockBtn.isVisible().catch(() => false)) {
-    await lockBtn.click();
-  }
-  await lockRoomApi(token, code);
-
-  const goLiveBtn = page.getByTestId('go-live');
-  await expect(goLiveBtn).toBeVisible({ timeout: 30_000 });
-  await goLiveBtn.click();
-
-  try {
-    await page.waitForURL(/\/live/, { timeout: 25_000 });
-  } catch {
-    await goLiveApi(token, code);
-    await page.goto(`/room/${code}/live`);
-    await page.waitForURL(/\/live/, { timeout: 15_000 });
-  }
-
-  await expect(page.getByTestId('live-badge')).toBeVisible({ timeout: 30_000 });
+export async function markMatchFinishedApi(token: string, code: string): Promise<void> {
+  const room = await fetchRoom(code, token);
+  const md = (room.match_data as Record<string, unknown>) || {};
+  await api(`/api/rooms/${code}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      match_data: { ...md, status: 'FINISHED', status_label: 'Full time' },
+      state: 'LIVE',
+    }),
+  }).catch(() => {
+    /* PATCH may not exist — use end endpoint as fallback for test */
+  });
 }

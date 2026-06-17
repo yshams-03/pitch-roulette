@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 
 export function JoinRoomPage() {
   const [code, setCode] = useState('');
@@ -27,12 +29,16 @@ export function JoinRoomPage() {
 
   return (
     <div className="px-4 py-8 max-w-sm mx-auto">
-      <h1 className="text-xl font-bold mb-4">Join room</h1>
-      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={6}
-        placeholder="Room code" className="w-full min-h-11 rounded-xl bg-pitch-card border border-pitch-border px-4 font-mono uppercase text-white mb-4" />
-      <button type="button" onClick={join} className="w-full min-h-11 rounded-xl bg-pitch-green text-pitch-black font-bold">
-        Join
-      </button>
+      <h1 className="text-xl font-bold mb-2">Join room</h1>
+      <p className="text-sm text-[var(--text-secondary)] mb-6">Enter the 6-character code from your host</p>
+      <Input
+        label="Room code"
+        value={code}
+        onChange={(e) => setCode(e.target.value.toUpperCase())}
+        maxLength={6}
+        className="code uppercase mb-4"
+      />
+      <Button variant="primary" size="lg" fullWidth onClick={join}>Join</Button>
     </div>
   );
 }
