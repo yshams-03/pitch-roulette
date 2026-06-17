@@ -157,11 +157,14 @@ def join_bots_to_room(room_id: str, room: dict, host_id: str) -> None:
         ).eq("user_id", bot["id"]).execute()
         if existing.data:
             continue
-        db.table("room_players").insert({
+        row = db.table("room_players").insert({
             "room_id": room_id,
             "user_id": bot["id"],
             "is_host": False,
-        }).execute()
+            "session_pc": 100,
+        }).execute().data[0]
+        from services.pitch_chips import ensure_starting_pc
+        ensure_starting_pc(room_id, bot["id"], row["id"])
 
 
 def seed_bot_predictions(room_id: str, room: dict, host_id: str, match_id: str) -> None:

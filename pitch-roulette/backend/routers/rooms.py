@@ -41,6 +41,7 @@ from services.match_engine import (
     resolve_active_bet,
 )
 from services.points import actual_outcome, close_room_and_award
+from services.pitch_chips import ensure_starting_pc
 from services.room_messages import delete_message, list_messages, post_message
 from services.room_snapshot import room_snapshot as _room_snapshot
 
@@ -108,11 +109,13 @@ async def create_room(body: CreateRoomRequest, user_id: str = Depends(get_curren
         "state": "LOBBY",
     })).execute().data[0]
 
-    db.table("room_players").insert({
+    host_row = db.table("room_players").insert({
         "room_id": room["id"],
         "user_id": user_id,
         "is_host": True,
-    }).execute()
+        "session_pc": 100,
+    }).execute().data[0]
+    ensure_starting_pc(room["id"], user_id, host_row["id"])
 
     if bot_cfg.enabled and bot_cfg.count > 0:
         join_bots_to_room(room["id"], room, user_id)
@@ -150,11 +153,13 @@ async def join_room(code: str, user_id: str = Depends(get_current_user_id)):
         "user_id", user_id
     ).execute()
     if not existing.data:
-        db.table("room_players").insert({
+        row = db.table("room_players").insert({
             "room_id": r["id"],
             "user_id": user_id,
             "is_host": False,
-        }).execute()
+            "session_pc": 100,
+        }).execute().data[0]
+        ensure_starting_pc(r["id"], user_id, row["id"])
     return _room_snapshot(r)
 
 
@@ -284,9 +289,14 @@ async def room_results(code: str):
     preds = sorted(snap.get("predictions", []), key=lambda p: -float(p.get("points_earned", 0)))
     for i, p in enumerate(preds, 1):
         p["rank"] = i
+    players = snap.get("players", [])
+    party = sorted(players, key=lambda p: -float(p.get("session_pc", 0)))
+    for i, p in enumerate(party, 1):
+        p["party_rank"] = i
     return {
         "room": snap,
         "leaderboard": preds,
+        "party_leaderboard": party,
         "actual_score": {
             "home": r.get("actual_home_goals"),
             "away": r.get("actual_away_goals"),

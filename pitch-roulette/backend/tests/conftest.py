@@ -55,8 +55,8 @@ def fake_db() -> FakeSupabase:
         "chat_enabled": True,
     }])
     db.seed("room_players", [
-        {"id": "rp-1", "room_id": "room-1", "user_id": "host-user", "is_host": True, "session_pp": 0},
-        {"id": "rp-2", "room_id": "room-1", "user_id": "player-2", "is_host": False, "session_pp": 0},
+        {"id": "rp-1", "room_id": "room-1", "user_id": "host-user", "is_host": True, "session_pp": 0, "session_pc": 100},
+        {"id": "rp-2", "room_id": "room-1", "user_id": "player-2", "is_host": False, "session_pp": 0, "session_pc": 100},
     ])
     db.seed("profiles", [
         {"id": "host-user", "username": "host", "display_name": "Host", "total_points": 10, "current_streak": 0, "best_streak": 0},
@@ -66,6 +66,7 @@ def fake_db() -> FakeSupabase:
     db.seed("flash_bet_answers", [])
     db.seed("predictions", [])
     db.seed("room_messages", [])
+    db.seed("pc_transactions", [])
     return db
 
 

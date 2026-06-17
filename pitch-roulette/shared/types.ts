@@ -125,6 +125,7 @@ export interface RoomPlayer {
   display_name?: string;
   avatar_color?: string;
   session_pp?: number;
+  session_pc?: number;
 }
 
 export interface Prediction {

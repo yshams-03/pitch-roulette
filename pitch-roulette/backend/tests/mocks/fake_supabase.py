@@ -71,7 +71,9 @@ class _Query:
                 row = copy.deepcopy(item)
                 if "id" not in row:
                     row["id"] = _new_id()
-                if "created_at" not in row and self._table in ("rooms", "flash_bets", "room_messages"):
+                if "created_at" not in row and self._table in (
+                    "rooms", "flash_bets", "room_messages", "pc_transactions"
+                ):
                     row["created_at"] = datetime.now(timezone.utc).isoformat()
                 rows.append(row)
                 out.append(row)
