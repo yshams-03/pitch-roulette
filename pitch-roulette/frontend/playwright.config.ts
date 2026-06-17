@@ -48,8 +48,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Use installed Google Chrome — avoids `npx playwright install` (TLS issues on some networks)
-        channel: 'chrome',
+        // Local dev: use installed Google Chrome. CI: bundled Chromium from `playwright install`.
+        ...(process.env.CI ? {} : { channel: 'chrome' as const }),
       },
     },
   ],
@@ -57,9 +57,9 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: 'npm run dev',
+          command: 'npm run dev -- --host 127.0.0.1 --port 5173',
           url: baseURL,
-          reuseExistingServer: true,
+          reuseExistingServer: !process.env.CI,
           timeout: 120_000,
         },
       ],

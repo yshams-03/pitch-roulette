@@ -68,4 +68,4 @@ jobs:
           fail_ci_if_error: false
 
   # E2E is manual/nightly — not on PR due to credential requirements.
-  # See follow-up: .github/workflows/e2e-nightly.yml
+  # See: .github/workflows/e2e-nightly.yml
