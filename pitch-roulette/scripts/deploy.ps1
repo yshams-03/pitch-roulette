@@ -27,7 +27,7 @@ if (-not $SkipTests) {
     Pop-Location
 }
 
-Step "2/6 Migration 007 check"
+Step "2/6 Migration checks"
 Push-Location $Backend
 & .\venv\Scripts\Activate.ps1
 python -c @"
@@ -37,7 +37,12 @@ load_dotenv(Path('.env'))
 from database import get_supabase
 db = get_supabase()
 db.table('analytics_events').select('id').limit(1).execute()
-print('analytics_events OK')
+print('analytics_events OK (007)')
+try:
+    db.table('predictions').select('pp_breakdown').limit(1).execute()
+    print('pp_breakdown OK (008)')
+except Exception as e:
+    print('WARN: migration 008 not applied — run supabase/migrations/008_points_flash_schedule.sql')
 "@
 if ($LASTEXITCODE -ne 0) { throw "Migration 007 not applied. Run supabase/migrations/007_phase4_ops.sql" }
 Pop-Location
