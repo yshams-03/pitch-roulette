@@ -1,7 +1,7 @@
 """Enhanced health checks for ops and E2E validation."""
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from database import get_supabase
 from services import sports_service
@@ -51,3 +51,14 @@ async def health():
     info["active_simulation_rooms"] = _count_rooms(state="LIVE", simulation=True)
     info["supabase_connected"] = _count_rooms() >= 0
     return info
+
+
+@router.get("/api/cors-test")
+async def cors_test(request: Request):
+    return {
+        "origin_received": request.headers.get("origin", "none"),
+        "cors_should_allow": [
+            "https://pitch-roulette.vercel.app",
+        ],
+        "message": "If you can read this, CORS is working",
+    }
