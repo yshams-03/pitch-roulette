@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase, supabaseConfigError } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { friendlyAuthError } from '../lib/authErrors';
 import { useAuthStore } from '../store/authStore';
 import { AuthShell } from '../components/layout/AuthShell';
@@ -19,14 +19,6 @@ export function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) {
-      return toast.error(
-        supabaseConfigError
-          ? `${supabaseConfigError}. Stop and restart: npm run dev`
-          : 'Supabase not configured — check frontend/.env and restart npm run dev',
-        { duration: 8000 },
-      );
-    }
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),

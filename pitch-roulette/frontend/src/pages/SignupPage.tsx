@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase, supabaseConfigError } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { friendlyAuthError } from '../lib/authErrors';
 import { useAuthStore } from '../store/authStore';
 import { AuthShell } from '../components/layout/AuthShell';
@@ -26,14 +26,6 @@ export function SignupPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) {
-      return toast.error(
-        supabaseConfigError
-          ? `${supabaseConfigError}. Stop and restart: npm run dev`
-          : 'Supabase not configured — check frontend/.env and restart npm run dev',
-        { duration: 8000 },
-      );
-    }
     if (password.length < 6) return toast.error('Password must be at least 6 characters');
     if (password !== confirm) return toast.error('Passwords do not match');
     if (!usernameValid) return toast.error('Username: 3-20 chars, letters, numbers, underscore');

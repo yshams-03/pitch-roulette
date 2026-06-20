@@ -4,8 +4,8 @@
  */
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-/** Prefer 127.0.0.1 — on Windows, `localhost` can hang on IPv6 while the backend listens on IPv4. */
-export const API_BASE = process.env.E2E_API_URL || 'http://127.0.0.1:8000';
+/** E2E standard backend base. Override with E2E_API_URL when needed. */
+export const API_BASE = process.env.E2E_API_URL?.replace(/\/$/, '') ?? 'http://localhost:8000';
 
 let cachedBackendVersion: string | null | undefined;
 
@@ -183,7 +183,7 @@ export async function signupIfNeeded(
 export async function logout(page: Page): Promise<void> {
   await page.goto('/profile');
   await page.getByRole('button', { name: /Log out/i }).click();
-  await page.waitForURL(/\/auth\/login|\//, { timeout: 10_000 });
+  await page.waitForURL(/\/auth\/login/, { timeout: 10_000 });
 }
 
 export async function openSecondBrowser(browser: Browser): Promise<{ page2: Page; context2: BrowserContext }> {
@@ -300,6 +300,7 @@ async function postFirstOk(token: string, paths: string[], body = '{}'): Promise
 export async function startRoomApi(token: string, code: string): Promise<void> {
   if (PAST_LOBBY.has(await getRoomState(code, token))) return;
   await postFirstOk(token, [`/api/rooms/${code}/start`, `/api/demo/rooms/${code}/advance`]);
+  await waitForRoomState(code, token, /^PREDICTING$/, 30_000);
 }
 
 export async function lockRoomApi(token: string, code: string): Promise<void> {
@@ -349,12 +350,44 @@ export async function waitForRoomState(
   return last;
 }
 
-export async function dismissSideReveal(page: Page): Promise<void> {
-  const reveal = page.getByTestId('side-reveal');
-  if (await reveal.isVisible().catch(() => false)) {
-    await page.waitForTimeout(1100);
-    await page.getByRole('button', { name: /Let's go/i }).click();
+export async function dismissSideRevealIfPresent(page: Page): Promise<void> {
+  try {
+    const reveal = page.getByTestId('side-reveal');
+    const isVisible = await reveal.isVisible({ timeout: 2000 });
+    if (isVisible) {
+      const dismissBtn = page.getByTestId('dismiss-side-reveal');
+      if (await dismissBtn.isVisible({ timeout: 1000 })) {
+        await dismissBtn.click();
+      } else {
+        await reveal.click({ force: true });
+      }
+      await expect(reveal).not.toBeVisible({ timeout: 5000 });
+    }
+  } catch {
+    // Side reveal not present — continue
   }
+}
+
+export async function dismissSideReveal(page: Page): Promise<void> {
+  await dismissSideRevealIfPresent(page);
+}
+
+export async function submitPredictionApi(
+  code: string,
+  token: string,
+  score: { home: number; away: number },
+): Promise<void> {
+  const outcome = score.home > score.away ? 'HOME_WIN'
+    : score.home < score.away ? 'AWAY_WIN'
+    : 'DRAW';
+  await api(`/api/rooms/${code}/predict`, token, {
+    method: 'POST',
+    body: JSON.stringify({
+      home_goals: score.home,
+      away_goals: score.away,
+      predicted_outcome: outcome,
+    }),
+  });
 }
 
 export async function startPredictions(page: Page, token: string, code: string): Promise<void> {
@@ -412,6 +445,7 @@ export async function openPredictions(page: Page, token: string, code: string): 
   }
 
   await dismissSideReveal(page);
+  await dismissSideRevealIfPresent(page);
   await expect(page.getByTestId('prediction-form')).toBeVisible({ timeout: 20_000 });
   await waitForRoomState(code, token, /^(PREDICTING|CLOSED)$/, 30_000);
 }
@@ -429,6 +463,7 @@ export async function submitScorePrediction(page: Page, home: string, away: stri
 
 export async function advanceToDraft(page: Page, token: string, code: string): Promise<void> {
   await openPredictions(page, token, code);
+  await dismissSideRevealIfPresent(page);
   await submitScorePrediction(page, '2', '1');
   await lockPredictions(page, token, code);
   await startDraft(page, token, code);
@@ -471,22 +506,25 @@ export async function setupDemoLiveRoom(
   token: string,
   viaDraft = false,
 ): Promise<{ code: string; room: Record<string, unknown> }> {
+  console.log('[E2E] Creating demo room...');
   const created = await createDemoRoom(token);
   const { code } = created;
+  console.log('[E2E] Room created:', code);
+
+  console.log('[E2E] Starting room...');
   await startRoomApi(token, code);
+  console.log('[E2E] Room PREDICTING');
+
   try {
-    await api(`/api/rooms/${code}/predict`, token, {
-      method: 'POST',
-      body: JSON.stringify({
-        home_goals: 2,
-        away_goals: 1,
-        predicted_outcome: 'HOME_WIN',
-      }),
-    });
+    await submitPredictionApi(code, token, { home: 2, away: 1 });
+    console.log('[E2E] Prediction submitted');
   } catch {
     /* may already exist */
   }
+
   await lockRoomApi(token, code);
+  console.log('[E2E] Room CLOSED');
+
   if (viaDraft) {
     await startDraftApi(token, code);
     await pickThreePlayersViaApi(token, code);
@@ -494,10 +532,13 @@ export async function setupDemoLiveRoom(
   } else {
     await goLiveApi(token, code);
   }
-  await waitForRoomState(code, token, /^(LIVE|FULL_TIME)$/);
+  console.log('[E2E] Room LIVE');
+
+  await waitForRoomState(code, token, /^(LIVE|FULL_TIME)$/, 20_000);
   await page.goto(`/room/${code}/live`);
   await expect(page.getByTestId('room-chat')).toBeVisible({ timeout: 30_000 });
   const room = await fetchRoom(code, token);
+  console.log('[E2E] Setup complete:', code);
   return { code, room };
 }
 

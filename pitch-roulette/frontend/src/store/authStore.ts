@@ -20,6 +20,16 @@ function mapSession(session: { access_token: string; user: { id: string } } | nu
   };
 }
 
+function clearSupabaseSessionStorage() {
+  if (typeof window === 'undefined') return;
+  const keys = Object.keys(window.localStorage);
+  for (const key of keys) {
+    if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+      window.localStorage.removeItem(key);
+    }
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   userId: null,
@@ -27,10 +37,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
 
   init: async () => {
-    if (!supabase) {
-      set({ loading: false });
-      return;
-    }
     const { data } = await supabase.auth.getSession();
     set({ ...mapSession(data.session), loading: false });
     supabase.auth.onAuthStateChange((_event, session) => {
@@ -43,7 +49,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setProfile: (profile) => set({ profile }),
 
   signOut: async () => {
-    if (supabase) await supabase.auth.signOut();
+    await supabase.auth.signOut();
+    clearSupabaseSessionStorage();
     set({ session: null, userId: null, profile: null });
+    window.location.href = '/auth/login';
   },
 }));

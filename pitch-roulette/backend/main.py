@@ -48,27 +48,35 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pitch Roulette API", version="3.0.0", lifespan=lifespan)
 
-def _origin(url: str) -> str:
-    return url.strip().rstrip("/")
+# Build allowed origins list
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
 
-frontend_url = _origin(os.getenv("FRONTEND_URL", "http://localhost:5173"))
-origins = [frontend_url]
-staging = _origin(os.getenv("STAGING_FRONTEND_URL", ""))
-if staging:
-    origins.append(staging)
-for host in ("http://localhost", "http://127.0.0.1"):
-    for port in ("5173", "5174", "5175", "5176"):
-        o = f"{host}:{port}"
-        if o not in origins:
-            origins.append(o)
+# Add production URL if set
+if FRONTEND_URL and FRONTEND_URL not in allowed_origins:
+    allowed_origins.append(FRONTEND_URL)
+
+# Also allow www variant if it exists
+if FRONTEND_URL.startswith("https://") and not FRONTEND_URL.startswith("https://www."):
+    www_variant = FRONTEND_URL.replace("https://", "https://www.", 1)
+    allowed_origins.append(www_variant)
+
+staging = os.getenv("STAGING_FRONTEND_URL", "").rstrip("/")
+if staging and staging not in allowed_origins:
+    allowed_origins.append(staging)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(health.router)

@@ -39,6 +39,10 @@ export function ProfilePage() {
     toast.success('Profile updated');
   };
 
+  const handleLogout = async () => {
+    await signOut();
+  };
+
   if (!profile) {
     return (
       <div className="p-8 max-w-lg mx-auto space-y-3">
@@ -77,7 +81,7 @@ export function ProfilePage() {
 
       <Input label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="mb-3" />
       <Button variant="primary" fullWidth onClick={save} className="mb-4">Save</Button>
-      <Button variant="danger" fullWidth onClick={() => signOut()}>Log out</Button>
+      <Button variant="danger" fullWidth onClick={handleLogout}>Log out</Button>
     </div>
   );
 }

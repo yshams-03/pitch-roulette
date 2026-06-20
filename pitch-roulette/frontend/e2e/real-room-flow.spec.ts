@@ -31,9 +31,18 @@ test.describe('Real room flow', () => {
 
   test.beforeAll(async ({ browser }) => {
     fixture = await fetchLiveFixture();
-    const page = await browser.newPage();
-    auth = await loginViaUI(page);
-    await page.close();
+    if (!fixture) {
+      console.log('⏭️ No live fixture available — skipping real-room-flow suite');
+      return;
+    }
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      auth = await loginViaUI(page);
+    } finally {
+      await page.close();
+      await context.close();
+    }
   });
 
   test.afterAll(async () => {
@@ -42,8 +51,10 @@ test.describe('Real room flow', () => {
     }
   });
 
-  test.beforeEach(() => {
-    test.skip(!fixture, 'No live fixtures — set E2E_MATCH_ID or wait for an in-play match');
+  test.beforeEach(({}, testInfo) => {
+    if (!fixture) {
+      testInfo.skip(true, 'No live fixture available');
+    }
   });
 
   test('create room with real fixture', async ({ page }) => {

@@ -40,6 +40,7 @@ test.describe('Authentication', () => {
   test('logout clears session', async ({ page }) => {
     await loginViaUI(page);
     await logout(page);
+    await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10_000 });
     await page.goto('/profile');
     await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10_000 });
   });

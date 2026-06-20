@@ -1,9 +1,9 @@
 # Pitch Roulette — Project Progress
 
-**Last updated:** 17 June 2026  
-**Version:** 3.0.0 + Phase 3 complete (pending merge)  
-**Branch:** `feat/phase3-sabotage` pushed to GitHub — **PR to `main` ready**  
-**Status:** **67** pytest + **10** Vitest + **69** Playwright E2E specs passing locally
+**Last updated:** 20 June 2026  
+**Version:** 3.0.0  
+**Branch:** `main`  
+**Status:** Production deployed — Railway + Vercel live; E2E stabilized (credential-gated specs need `E2E_TEST_*` env)
 
 ---
 
@@ -551,7 +551,10 @@ npm run test:unit  # 10/10 passing
 | Staging deploy verify workflow | Done — `.github/workflows/deploy-staging.yml` |
 | PR E2E smoke (home page) | Done — `test.yml` job `e2e-smoke` |
 | Docker + Railway + Vercel config | Done — `Dockerfile`, `railway.toml`, `vercel.json` |
-| Migration `007_phase4_ops.sql` | **Apply in Supabase** before prod telemetry |
+| Migration `007_phase4_ops.sql` | Applied |
+| Railway production deploy | Done — `https://pitch-roulette-production.up.railway.app` |
+| Railway Docker build fixes | Done — root `Dockerfile`/`railway.json`, removed `runtime.txt` + `Procfile` |
+| Merge to `main` | Done — deploy files now exist on `main` for Railway/Vercel |
 
 ### Verification
 
@@ -564,18 +567,32 @@ npm run build
 npm run test:unit
 ```
 
-### Deploy checklist
+### Deployment status
 
-1. Apply migration **`007`** in Supabase SQL Editor
-2. Deploy backend to Railway (see `DEPLOY.md`)
-3. Deploy frontend to Vercel
-4. Run deploy-staging workflow against API URL
-5. Optional: `python scripts/load_test_rooms.py --rooms 50 --token <jwt>`
+| Service | URL | Status |
+|---------|-----|--------|
+| **Backend (Railway)** | https://pitch-roulette-production.up.railway.app | Live — `/api/health` OK, `supabase_connected: true` |
+| **Frontend (Vercel)** | https://pitch-roulette.vercel.app | Live — Vite build + SPA rewrites |
 
-### Before merge to `main`
+### Production hardening (2026-06-20)
 
-1. Run migrations **`003`–`007`** in Supabase SQL Editor (in order)
-2. Open PR: [compare `main`...`feat/phase3-sabotage`](https://github.com/yshams-03/pitch-roulette/compare/main...feat/phase3-sabotage)
-3. Confirm CI green (`backend` + `frontend-unit` + `e2e-smoke`)
-4. Merge PR
+- CORS: explicit `allowed_origins` in `backend/main.py` (Vercel + localhost + www variant)
+- Frontend: `src/lib/config.ts` single source for env; `ErrorBoundary` in `main.tsx`
+- `vercel.json`: explicit build, cache headers, baked `VITE_API_BASE_URL`
+- `scripts/smoke-test.sh` + `scripts/launch-checklist.md` for post-deploy verification
+
+### Remaining launch checklist
+
+1. ~~Set Railway production env vars~~ — done (`FRONTEND_URL`, Supabase keys)
+2. ~~Deploy frontend to Vercel~~ — done
+3. Confirm Vercel **Production** env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+4. Run `./scripts/smoke-test.sh` after each deploy
+5. Manual: auth signup/login/logout on production URL
+6. Optional: `python scripts/load_test_rooms.py --rooms 50 --token <jwt>`
+
+### Current production notes
+
+1. Hard-refresh Vercel after env changes (old JS bundles may still call `localhost:8000`)
+2. E2E credentialed suite requires `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` in shell — 11 specs pass without creds (home + cleanup + leaderboard)
+3. Local frontend `.env` now points to the Railway production backend for verification
 
