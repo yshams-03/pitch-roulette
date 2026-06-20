@@ -48,35 +48,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pitch Roulette API", version="3.0.0", lifespan=lifespan)
 
-# Build allowed origins list
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
-
-allowed_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-]
-
-# Add production URL if set
-if FRONTEND_URL and FRONTEND_URL not in allowed_origins:
-    allowed_origins.append(FRONTEND_URL)
-
-# Also allow www variant if it exists
-if FRONTEND_URL.startswith("https://") and not FRONTEND_URL.startswith("https://www."):
-    www_variant = FRONTEND_URL.replace("https://", "https://www.", 1)
-    allowed_origins.append(www_variant)
-
-staging = os.getenv("STAGING_FRONTEND_URL", "").rstrip("/")
-if staging and staging not in allowed_origins:
-    allowed_origins.append(staging)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        # Local development
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        # Production Vercel — add ALL variants
+        "https://pitch-roulette.vercel.app",
+        "https://www.pitch-roulette.vercel.app",
+        # Allow any Vercel preview deploy for this project
+        "https://pitch-roulette-git-main-yshams-03.vercel.app",
+        # Catch-all for any Vercel preview URL for this project
+        *(
+            [os.getenv("FRONTEND_URL").rstrip("/")]
+            if os.getenv("FRONTEND_URL")
+            else []
+        ),
+    ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=86400,
 )
 
 app.include_router(health.router)
