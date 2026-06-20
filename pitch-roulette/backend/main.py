@@ -48,9 +48,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pitch Roulette API", version="3.0.0", lifespan=lifespan)
 
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+def _origin(url: str) -> str:
+    return url.strip().rstrip("/")
+
+
+frontend_url = _origin(os.getenv("FRONTEND_URL", "http://localhost:5173"))
 origins = [frontend_url]
-staging = os.getenv("STAGING_FRONTEND_URL", "")
+staging = _origin(os.getenv("STAGING_FRONTEND_URL", ""))
 if staging:
     origins.append(staging)
 for host in ("http://localhost", "http://127.0.0.1"):
