@@ -12,7 +12,10 @@ interface Props {
 }
 
 export function RoomChat({ roomId, code, token, enabled, silencedSeconds = 0 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth >= 768;
+  });
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
@@ -35,7 +38,7 @@ export function RoomChat({ roomId, code, token, enabled, silencedSeconds = 0 }: 
   }, [enabled, load]);
 
   useEffect(() => {
-    if (!supabase || !roomId || !enabled) return;
+    if (!roomId || !enabled) return;
     const ch = supabase
       .channel(`chat-${roomId}`)
       .on(

@@ -239,6 +239,10 @@ Interactive docs: http://127.0.0.1:8000/docs
 
 E2E is not gated on PRs (requires Supabase credentials).
 
+### Branch protection
+
+On GitHub, protect `main` with required status checks: **backend** and **frontend-unit** (from `test.yml`). E2E nightly runs separately with repository secrets.
+
 ---
 
 ## Further reading

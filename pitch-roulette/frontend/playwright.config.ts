@@ -42,6 +42,9 @@ export default defineConfig({
     video: process.env.CI ? 'retain-on-failure' : 'off',
     actionTimeout: 15_000,
     navigationTimeout: 20_000,
+    extraHTTPHeaders: {
+      'x-e2e-test': 'true',
+    },
   },
   projects: [
     {

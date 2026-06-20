@@ -50,11 +50,11 @@ test.describe('Global Leaderboard', () => {
   test('global leaderboard loads and paginates', async ({ page }) => {
     if (hasE2ECredentials()) await loginViaUI(page);
     await page.goto('/leaderboard');
-    await expect(page.getByRole('heading', { name: 'Leaderboard' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'All time' })).toBeVisible();
-    await page.getByRole('button', { name: 'month' }).click();
-    await page.getByRole('button', { name: 'week' }).click();
-    await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Global Leaderboard/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'All Time' })).toBeVisible();
+    await page.getByRole('tab', { name: 'This Month' }).click();
+    await page.getByRole('tab', { name: 'This Week' }).click();
+    await expect(page.getByRole('button', { name: 'Load more' })).toBeVisible();
   });
 
   test('own rank shown when logged in', async ({ page }) => {

@@ -1,7 +1,7 @@
 import type { DraftPick, Sabotage, SabotageShopItem, SquadPlayer } from '../../../shared/types';
+import { config } from './config';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-
+const API_BASE = config.apiUrl;
 export class ApiError extends Error {
   status: number;
   data: Record<string, unknown>;
