@@ -12,7 +12,9 @@ reload_settings()
 import os
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 
 from routers import demo_compat, draft, groups, health, leaderboard, ops, profiles, rooms, sabotages, sports
 from services.event_pipeline import start_event_pipeline
@@ -48,32 +50,59 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pitch Roulette API", version="3.0.0", lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        # Local development
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        # Production Vercel — add ALL variants
-        "https://pitch-roulette.vercel.app",
-        "https://www.pitch-roulette.vercel.app",
-        # Allow any Vercel preview deploy for this project
-        "https://pitch-roulette-git-main-yshams-03.vercel.app",
-        # Catch-all for any Vercel preview URL for this project
-        *(
-            [os.getenv("FRONTEND_URL").rstrip("/")]
-            if os.getenv("FRONTEND_URL")
-            else []
-        ),
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=86400,
-)
+ALLOWED_ORIGIN_PATTERNS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "https://pitch-roulette.vercel.app",
+]
+
+
+def is_origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    # Exact matches
+    if origin in ALLOWED_ORIGIN_PATTERNS:
+        return True
+    # Any Vercel preview for this project
+    if origin.endswith(".vercel.app") and "pitch-roulette" in origin:
+        return True
+    # FRONTEND_URL from env
+    frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+    if frontend_url and origin == frontend_url:
+        return True
+    return False
+
+
+class DynamicCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin", "")
+
+        if request.method == "OPTIONS":
+            if is_origin_allowed(origin):
+                return Response(
+                    status_code=200,
+                    headers={
+                        "Access-Control-Allow-Origin": origin,
+                        "Access-Control-Allow-Credentials": "true",
+                        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Max-Age": "86400",
+                    },
+                )
+            return Response(status_code=403)
+
+        response = await call_next(request)
+
+        if is_origin_allowed(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Expose-Headers"] = "*"
+
+        return response
+
+
+app.add_middleware(DynamicCORSMiddleware)
 
 app.include_router(health.router)
 app.include_router(ops.router)
