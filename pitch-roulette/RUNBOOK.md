@@ -16,13 +16,17 @@
 curl https://YOUR-API/api/health
 ```
 
-Key fields: `supabase_connected`, `active_rooms`, `feature_flags`, `sentry_enabled`, `telemetry_24h`
+Key fields: `supabase_connected`, `active_rooms`, `alerts`, `feature_flags`, `sentry_enabled`, `telemetry_24h`, `flash_bet_conversion_24h`, `product_insight`
+
+**Alerts:** non-empty `alerts[]` when `active_rooms >= LIVE_ROOM_ALERT_THRESHOLD` (default 40). Page on-call or scale before match day.
 
 Funnel metrics (ops):
 
 ```bash
 curl https://YOUR-API/api/metrics/funnel?hours=24
 ```
+
+Returns `flash_bet_seen`, `flash_bet_answered`, `flash_bet_conversion_rate`, and `insight` when conversion &lt; 50% with enough volume.
 
 ## Feature kill switches
 
@@ -49,12 +53,23 @@ Apply in Supabase SQL Editor in numeric order. Phase 4 adds `analytics_events` (
 
 ## Load testing
 
+See **`docs/LOAD_TEST.md`** for ramp procedure, baseline, and alert wiring.
+
 ```bash
 cd pitch-roulette/backend
-python scripts/load_test_rooms.py --rooms 50 --base-url https://YOUR-API --token YOUR_JWT
+python scripts/load_test_rooms.py --health-only --base-url https://YOUR-API
+python scripts/load_test_rooms.py --token YOUR_JWT --ramp 10,25,50,75 --base-url https://YOUR-API
 ```
 
-Target: 50/50 rooms created, no 5xx.
+Target: 50/50 rooms created at 50 concurrency, no 5xx. Set `LIVE_ROOM_ALERT_THRESHOLD` on Railway.
+
+## Match day degradation
+
+See **`docs/MATCH_DAY.md`**. Drill script:
+
+```bash
+python scripts/match_day_drill.py --base-url https://YOUR-API --health-only
+```
 
 ## Rollback
 

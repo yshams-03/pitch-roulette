@@ -1,9 +1,9 @@
 # Pitch Roulette — Project Progress
 
-**Last updated:** 20 June 2026  
+**Last updated:** 18 June 2026  
 **Version:** 3.0.0  
 **Branch:** `main`  
-**Status:** Production deployed — Railway + Vercel live; E2E stabilized (credential-gated specs need `E2E_TEST_*` env)
+**Status:** Production deployed — Railway + Vercel live; FotMob live feed + skill PP + scheduled flash bets shipped locally
 
 ---
 
@@ -11,7 +11,7 @@
 
 Pitch Roulette is a World Cup prediction app. Users sign up, join friend groups, compete on leaderboards, and create **prediction rooms** during live matches. Phase 1 covered score predictions and PP awards. **Phase 2** adds realtime rooms, flash bets, knockout bracket, in-room chat/reactions, host control panel, and ESPN live events.
 
-**v3.0.0** unifies demo and real rooms behind a single `match_engine` — no separate demo code paths in the frontend. Demo simulation rooms use the same lobby → predict → live → results flow as real rooms.
+**v3.0.0** unifies demo and real rooms behind a single `match_engine`. **June 2026 updates** add a FotMob-style live match feed (`MatchFacts`), a redesigned skill-based PP system with results breakdowns, and time-scheduled flash bets (`flash_bet_scheduler.py`) replacing ESPN event-triggered bets.
 
 ---
 
@@ -57,21 +57,26 @@ Run **`supabase/migrations/002_unify_demo.sql`** in Supabase SQL Editor after `p
 
 ### 2. Flash bets ✅
 
-- Betting window: **12s** (live rooms), **30s** (demo auto-bets)
+- Betting window: **12s** (live rooms), **30s** (demo rooms)
 - 5s server grace after `locks_at` for late submissions
-- Wager tiers: LOW (0.5 PP), MEDIUM (1 PP), HIGH (2 PP)
-- Host-triggered via host panel or API
-- Auto-triggered from **ESPN `details[]`** events (goals, cards, penalties) for LIVE rooms
-- Score-delta fallback when ESPN unavailable
+- **PC wager tiers:** LOW (5), MEDIUM (10), HIGH (20 PC) — separate from PP awards
+- Host-triggered via host panel or API (manual bets anytime)
+- **Auto-triggered on match-minute schedule** (`FLASH_BET_SCHEDULE` / `DEMO_FLASH_BET_SCHEDULE`) — question pools with smart template fill
+- Idempotent per room+minute via `flash_bet_minutes` table
+- Auto-resolve for common `answer_key`s; host can override
+- Flash bet PP: **+0.5** per correct answer; **+1** bonus on 3 consecutive correct in same room
 - PP updates `room_players.session_pp` + `profiles.total_points`
-- UI on `/room/:code/live`: countdown card, Yes/No buttons, optimistic “Your pick”, history, session PP
+- UI on `/room/:code/live`: countdown card, answer buttons, history, session PP
+- Host panel shows `answer_key` + match minute for resolve hints
+
+> **Note:** Phase 2 originally fired flash bets from ESPN `details[]` events. The June 2026 scheduler replaces that for predictable engagement at minutes 5, 15, 30, 44, HT, 75, 85, 90, etc.
 
 ### 3. ESPN live events ✅
 
 - `backend/services/espn.py` — public ESPN scoreboard/summary API (no auth)
 - `resolve_espn_event_id()`, `get_espn_live_snapshot()` in `sports_service.py`
 - `espn_event_id` stored on rooms at create / go-live
-- `flash_bet_generator.py` polls LIVE rooms every 30s (skips simulation rooms)
+- `flash_bet_generator.py` → `event_pipeline.py` background tick (ESPN score sync + flash scheduler)
 - Config: `ESPN_ENABLED`, `ESPN_LEAGUE_SLUG` in `backend/.env`
 
 ### 4. Demo simulation ✅
@@ -118,7 +123,6 @@ Full match flow **without a real live fixture** — France vs Netherlands with 3
 ## Updated room flow
 
 ```
-```
 /demo (optional) → /lobby → /predict → /draft → /live → /results
 ```
 
@@ -134,8 +138,8 @@ LOBBY → PREDICTING → CLOSED → DRAFTING → LIVE → FULL_TIME → RESULTS
 | Lobby | `/room/:code/lobby` | Players join, host starts predictions |
 | Predict | `/room/:code/predict` | Side reveal, score predictions, optional side swap (20 PC) |
 | Draft | `/room/:code/draft` | 60s fantasy draft — pick 3 players per side, PC on goals |
-| Live | `/room/:code/live` | Flash bets, sabotage shop, match events, chat, reactions |
-| Results | `/room/:code/results` | PP skill board + PC party board, draft performance tab |
+| Live | `/room/:code/live` | **MatchFacts** feed, flash bets, sabotage shop, chat, reactions |
+| Results | `/room/:code/results` | PP skill board (**expandable breakdown**), PC party board, draft tab |
 | Host panel | `/host/:code` | Second-screen controls for host |
 
 **Groups:** `/groups/:id` → **Watch Together** creates a live or demo room with `group_id` attached.
@@ -152,7 +156,7 @@ Runs on every **push to `main`** and **pull request to `main`**.
 
 | Job | What it runs |
 |-----|--------------|
-| `backend` | `pytest tests/` — 67 tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
+| `backend` | `pytest tests/` — 80+ tests, `DEMO_MODE=true`, `ESPN_ENABLED=false`, FakeSupabase |
 | `frontend-unit` | `npm run test:unit -- --coverage` — 10 Vitest tests |
 
 E2E is **not** in PR CI (needs Supabase auth credentials). **Nightly:** `.github/workflows/e2e-nightly.yml` (02:00 UTC + `workflow_dispatch`).
@@ -227,7 +231,7 @@ npx playwright test e2e/host-controls.spec.ts
 - Auth, profiles, groups, global leaderboard
 - Prediction rooms (updated flow above)
 - Football-Data.org sports data (no mock for real fixtures)
-- PP rules for predictions unchanged (+1 outcome, +3 exact, +0.5 first, streak bonus)
+- PP rules (June 2026): exact +3, goal-diff +2, outcome +1, early bonus, streak multipliers, underdog +1 — see `points.py`
 
 ---
 
@@ -256,6 +260,7 @@ npx playwright test e2e/host-controls.spec.ts
 | 5 | `supabase/migrations/004_phase3_sabotage.sql` | Phase 3 Feature 2 — sabotage shop |
 | 6 | `supabase/migrations/005_phase3_sides.sql` | Phase 3 Feature 3 — HOME/AWAY assignment |
 | 7 | `supabase/migrations/006_phase3_draft.sql` | Phase 3 Feature 4 — fantasy draft |
+| 8 | `supabase/migrations/008_points_flash_schedule.sql` | `pp_breakdown`, flash bet `answer_key` / `match_minute`, `flash_bet_minutes` |
 | — | `supabase/fix_auth_trigger.sql` | If sign-up fails |
 
 | Table / column | Purpose |
@@ -265,7 +270,11 @@ npx playwright test e2e/host-controls.spec.ts
 | `rooms.match_source` | `live_api` / `demo_simulation` / `manual` |
 | `rooms.bot_config_json` | Simulation bot settings |
 | `rooms.match_simulation_json` | Simulation match state |
-| `rooms.last_seen_event_key` | Auto flash bet dedup |
+| `predictions.pp_breakdown` | JSON breakdown for results UI (June 2026) |
+| `flash_bets.answer_key` | Resolver key for auto-resolve + host hints |
+| `flash_bets.match_minute` | Schedule minute when bet fired |
+| `flash_bet_minutes` | Dedup — one auto bet per room per minute |
+| `rooms.last_seen_event_key` | ESPN event cursor (score sync) |
 | `rooms.espn_event_id` | ESPN match cursor |
 | `room_players.session_pp` | Flash bet PP in session |
 | `room_players.session_pc` | Pitch Chips balance (starts at 100) |
@@ -292,6 +301,7 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | POST | `/api/rooms/{code}/lock` | PREDICTING → CLOSED |
 | POST | `/api/rooms/{code}/go-live` | CLOSED → LIVE |
 | POST | `/api/rooms/{code}/end` | LIVE → RESULTS + award PP |
+| GET | `/api/rooms/{code}/match-facts` | Live match feed — events, stats, score (30s cache, public) |
 | GET/POST | `/api/rooms/{code}/flash-bets` | List / create flash bets |
 | GET | `/api/rooms/{code}/sabotages/shop` | Sabotage catalog + buyer PC |
 | GET/POST | `/api/rooms/{code}/sabotages` | List active / purchase sabotage |
@@ -316,6 +326,11 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 
 | Area | Path |
 |------|------|
+| Points / PP | `backend/services/points.py` |
+| Flash bet scheduler | `backend/services/flash_bet_scheduler.py` |
+| Match facts API | `backend/services/sports_service.py` → `get_live_match_facts()` |
+| Match facts UI | `frontend/src/components/MatchFacts.tsx` |
+| PP breakdown UI | `frontend/src/components/PPBreakdownCard.tsx` |
 | Match engine | `backend/services/match_engine.py` |
 | Bots | `backend/services/bots.py` |
 | Event pipeline | `backend/services/event_pipeline.py` |
@@ -334,9 +349,9 @@ Realtime enabled on: `flash_bets`, `flash_bet_answers`, `room_messages`, `rooms`
 | Design system | `frontend/src/styles/design-system.css`, `frontend/src/components/ui/` |
 | App layout | `frontend/src/components/layout/AppLayout.tsx` |
 | E2E helpers | `frontend/e2e/helpers.ts` |
-| Backend tests | `backend/tests/` (67 pytest tests) |
+| Backend tests | `backend/tests/` (80+ pytest tests) |
 | CI workflow | `.github/workflows/test.yml` (repo root) |
-| Phase 3 migrations | `003`–`006` in `supabase/migrations/` |
+| Phase 3 migrations | `003`–`006`, `008` in `supabase/migrations/` |
 
 ---
 
@@ -359,7 +374,7 @@ npm run dev
 
 ### Before testing
 
-1. Run **`phase2_migration.sql`** then **`migrations/002`–`006`** in Supabase SQL Editor (if not on fresh schema)
+1. Run **`phase2_migration.sql`** then **`migrations/002`–`006`** and **`008`** in Supabase SQL Editor (if not on fresh schema)
 2. Set **`DEMO_MODE=true`** in `backend/.env` for demo sandbox
 3. Copy `backend/.env.example` → `backend/.env` and fill Supabase + Football-Data keys
 4. Restart backend after `.env` changes
@@ -371,7 +386,7 @@ npm run dev
 2. Lobby → **Start predictions** → predict page
 3. Lock score → **Lock predictions** → **Start draft** (or skip) → **Go live**
 4. Draft page: pick 3 players (60s timer) → auto go-live when timer ends
-5. Live page: match events, flash bets, sabotage shop, chat
+5. Live page: **MatchFacts** timeline, scheduled flash bets, sabotage shop, chat
 5. **End match** → results PP
 
 Or use host panel at `/host/:code` for inject event, chat toggle, manual flash bets.
@@ -520,8 +535,8 @@ Visual-only overhaul — **no backend, API, or business logic changes**. All `da
 - **Auth:** Centered card on grid pattern background
 - **Predict:** `Stepper` score picker, side reveal (Framer Motion spring)
 - **Draft:** `CountdownRing` (80px)
-- **Live:** Sticky score bar, flash bet purple glow + `CountdownRing`, mobile Standings/Events/Chat tabs, sabotage FAB
-- **Results:** Winner banner with staggered entrance
+- **Live:** Sticky FotMob-style score bar + goal scorers, **MatchFacts** (Facts/Stats/Table), flash bet card, mobile Standings/Events/Chat tabs, sabotage FAB
+- **Results:** Winner banner, **PP breakdown accordion** per player, party board, draft tab
 - **Leaderboard:** Period tabs, desktop podium, load-more pagination
 
 ### Verification
@@ -555,6 +570,45 @@ npm run test:unit  # 10/10 passing
 | Railway production deploy | Done — `https://pitch-roulette-production.up.railway.app` |
 | Railway Docker build fixes | Done — root `Dockerfile`/`railway.json`, removed `runtime.txt` + `Procfile` |
 | Merge to `main` | Done — deploy files now exist on `main` for Railway/Vercel |
+
+### Room transition speed (local UX fix)
+
+| Item | Status |
+|------|--------|
+| Optimistic + API snapshot after host transitions | Done — `applySnapshot` / `patchRoom` on lobby, predict, draft, live, host panel |
+| `useRoomRealtime` polling | Done — 1s when Realtime down, 10s backup when subscribed |
+| Realtime `rooms` subscription | Done — `room_code` filter + `UPDATE` events (no wait for `room.id`) |
+| Transition button loading states | Done — host actions show spinner text immediately |
+
+**Before:** host clicks waited 10–20s for Realtime/poll fallback. **After:** redirect in &lt;500ms from API response; non-host players redirect within 1–2s (Realtime or 1s poll).
+
+### Live match feed — FotMob-style (June 2026)
+
+| Item | Status |
+|------|--------|
+| `GET /api/rooms/{code}/match-facts` | Done — public, 30s `api_cache` |
+| `get_live_match_facts()` | Done — ESPN summary → Football-Data → `room_events` / demo simulation |
+| `MatchFacts.tsx` (Facts / Stats / Table tabs) | Done — FotMob event layout, stat bars, `GroupTableCard` |
+| Sticky score header + goal scorers | Done — `RoomLivePage` |
+| Demo rooms from `match_simulation_json` | Done |
+| VAR row ↔ flash bet highlight | Done — purple border when open bet matches |
+| Mobile Events tab | Done — Facts + Stats sub-tabs; preserves `match-events-panel` testid |
+
+### Points system + flash bet schedule (June 2026)
+
+| Item | Status |
+|------|--------|
+| `calculate_prediction_pp()` | Done — exact/diff/outcome, streak mult, early bonus, underdog |
+| `predictions.pp_breakdown` JSON | Done — migration `008` |
+| `PPBreakdownCard` on results page | Done — expandable per-player breakdown |
+| `flash_bet_scheduler.py` | Done — `FLASH_BET_SCHEDULE` by match minute |
+| `DEMO_FLASH_BET_SCHEDULE` | Done — compressed minutes for simulation |
+| Question pools + template fill | Done — `{home_team}`, scores, added time |
+| `flash_bet_minutes` dedup | Done — idempotent per room+minute |
+| Auto-resolve (`answer_key` resolvers) | Done — host override still available |
+| Host panel `answer_key` display | Done |
+| Draft PP (goal/assist/MOTM/red) | Done — `draft.py` |
+| Unit tests | Done — `test_points.py`, `test_flash_bet_scheduler.py` |
 
 ### Verification
 
@@ -595,4 +649,32 @@ npm run test:unit
 1. Hard-refresh Vercel after env changes (old JS bundles may still call `localhost:8000`)
 2. E2E credentialed suite requires `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` in shell — 11 specs pass without creds (home + cleanup + leaderboard)
 3. Local frontend `.env` now points to the Railway production backend for verification
+
+---
+
+## Production “10 gap” (2026-06-20)
+
+| Item | Status | Where |
+|------|--------|-------|
+| Load test — 50 rooms, breaking point, alert | Done | `scripts/load_test_rooms.py`, `docs/LOAD_TEST.md`, `/api/health` `alerts[]` |
+| E2E on PR CI — 11 credential-free specs | Done | `@pr-smoke` in home/cleanup/groups; `.github/workflows/test.yml` |
+| Analytics — flash bet seen → answered | Done | `flash_bet_seen` / `flash_bet_answered`, `/api/metrics/funnel`, urgency CTA in `FlashBetCard` |
+| Match day runbook tested | Done | `docs/MATCH_DAY.md`, `scripts/match_day_drill.py` |
+
+### PR smoke E2E (no credentials)
+
+```bash
+cd frontend
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173 &
+E2E_SKIP_WEBSERVER=1 E2E_BASE_URL=http://127.0.0.1:4173 npx playwright test --grep @pr-smoke
+```
+
+### Load test (production)
+
+```bash
+cd backend
+python scripts/load_test_rooms.py --health-only --base-url https://pitch-roulette-production.up.railway.app
+python scripts/load_test_rooms.py --token <jwt> --ramp 10,25,50,75 --base-url https://pitch-roulette-production.up.railway.app
+```
 

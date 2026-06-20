@@ -82,6 +82,52 @@ export interface MatchEventLog {
   at?: string;
 }
 
+export type MatchEventType =
+  | 'GOAL' | 'OWN_GOAL' | 'YELLOW' | 'RED'
+  | 'SECOND_YELLOW' | 'SUBSTITUTION' | 'VAR'
+  | 'PENALTY_SCORED' | 'PENALTY_MISSED';
+
+export interface MatchEvent {
+  id: string;
+  minute: number;
+  added_minute?: number | null;
+  type: MatchEventType | string;
+  team: 'home' | 'away';
+  player: string;
+  assist?: string | null;
+  detail?: string | null;
+  description?: string | null;
+}
+
+export interface MatchStats {
+  possession: { home: number; away: number };
+  shots: { home: number; away: number };
+  shots_on_target: { home: number; away: number };
+  xg: { home: number; away: number };
+  corners: { home: number; away: number };
+  fouls: { home: number; away: number };
+  offsides: { home: number; away: number };
+}
+
+export interface MatchFactsData {
+  match: {
+    home_team: string;
+    away_team: string;
+    home_score: number;
+    away_score: number;
+    minute: number;
+    status: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'PEN' | 'FT' | string;
+    added_time?: number | null;
+    venue?: string | null;
+    referee?: string | null;
+    competition?: string | null;
+  };
+  events: MatchEvent[];
+  stats: MatchStats;
+  fetched_at?: string;
+  _stats_available?: boolean;
+}
+
 export interface StandingRow {
   rank: number;
   team: string;
@@ -132,6 +178,18 @@ export interface RoomPlayer {
   side_swap_used?: boolean;
 }
 
+export interface PPBreakdown {
+  base: number;
+  streak_mult: string;
+  streak_bonus: number;
+  early_bonus: number;
+  underdog_bonus: number;
+  total: number;
+  score_exact?: boolean;
+  score_diff_correct?: boolean;
+  outcome_correct?: boolean;
+}
+
 export interface Prediction {
   id: string;
   room_id: string;
@@ -146,6 +204,11 @@ export interface Prediction {
   username?: string;
   display_name?: string;
   avatar_color?: string;
+  pp_breakdown?: PPBreakdown;
+  outcome_correct?: boolean;
+  score_exact?: boolean;
+  score_diff_correct?: boolean;
+  rank?: number;
 }
 
 export interface LeaderboardEntry {
@@ -176,6 +239,9 @@ export interface FlashBet {
   locks_at: string | null;
   resolved_at: string | null;
   match_event_type: string | null;
+  answer_key?: string | null;
+  match_minute?: number | null;
+  auto_resolved?: boolean;
   created_at: string;
 }
 

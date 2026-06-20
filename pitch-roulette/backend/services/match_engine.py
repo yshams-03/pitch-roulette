@@ -9,8 +9,6 @@ from typing import Literal
 from database import get_supabase
 from services.codes import unique_room_code
 from services.flash_bets import (
-    DEMO_FLASH_WINDOW_SECONDS,
-    create_auto_flash_bet,
     list_flash_bets,
     resolve_flash_bet,
 )
@@ -207,7 +205,6 @@ class DemoMatchSimulation(MatchSimulation):
         elif event_type == "GOAL_AWAY":
             self._state["away_goals"] = int(self._state.get("away_goals", 0)) + 1
 
-        flash_type = INJECT_TO_FLASH[event_type]
         event_key = (
             f"sim-{event_type.lower()}-{minute}-"
             f"{self._state['home_goals']}-{self._state['away_goals']}"
@@ -233,18 +230,12 @@ class DemoMatchSimulation(MatchSimulation):
         self._state["away_team"] = away_team
         self._state["demo"] = True
 
-        q, opts = EVENT_QUESTIONS[flash_type]
-        bet = create_auto_flash_bet(
-            self.room["id"], q, opts, flash_type, event_key,
-            window_seconds=DEMO_FLASH_WINDOW_SECONDS,
-        )
-
         updated = self.persist({
             "last_seen_event_key": event_key,
         })
         _record_room_event(self.room["id"], event)
 
-        return {"room": updated, "flash_bet": bet, "event": event}
+        return {"room": updated, "flash_bet": None, "event": event}
 
 
 class LiveMatchSimulation(MatchSimulation):

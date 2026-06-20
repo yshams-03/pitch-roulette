@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { Avatar } from '../components/Avatar';
 import { Card } from '../components/ui/Card';
 import { Tabs } from '../components/ui/Tabs';
+import { PPBreakdownCard } from '../components/PPBreakdownCard';
 import type { Prediction, RoomPlayer } from '../../../shared/types';
 
 const RESULT_TABS = [
@@ -36,10 +37,10 @@ export function RoomResultsPage() {
   useEffect(() => {
     if (!code) return;
     api.roomResults(code).then((r) => {
-      setLeaderboard((r.leaderboard as Prediction[]) || []);
-      setPartyBoard((r.party_leaderboard as RoomPlayer[]) || []);
-      setDraftPicks((r.draft_picks as DraftPickRow[]) || []);
-      setActual(r.actual_score as { home: number; away: number });
+      setLeaderboard((r.leaderboard as unknown as Prediction[]) || []);
+      setPartyBoard((r.party_leaderboard as unknown as RoomPlayer[]) || []);
+      setDraftPicks((r.draft_picks as unknown as DraftPickRow[]) || []);
+      setActual(r.actual_score);
     });
   }, [code]);
 
@@ -79,8 +80,15 @@ export function RoomResultsPage() {
               <div className="flex-1 min-w-0">
                 <Link to={`/profile/${p.username}`} className="font-medium no-underline">{p.display_name}</Link>
                 <p className="text-sm text-[var(--text-muted)]">Predicted {p.home_goals}–{p.away_goals}</p>
+                {p.pp_breakdown && actual && (
+                  <PPBreakdownCard
+                    breakdown={p.pp_breakdown}
+                    predicted={`${p.home_goals}-${p.away_goals}`}
+                    actual={`${actual.home}-${actual.away}`}
+                  />
+                )}
               </div>
-              <span className="font-bold text-[var(--pr-green)]">+{p.points_earned} PP</span>
+              <span className="font-bold text-[var(--pr-green)] shrink-0">+{p.points_earned} PP</span>
             </Card>
           ))}
         </div>

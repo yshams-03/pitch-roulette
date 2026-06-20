@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { snapshotFromApi } from '../lib/roomSnapshot';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { isSimulationRoom } from '../lib/roomUtils';
-import type { FlashBet, RoomPlayer, Sabotage } from '../../../shared/types';
+import type { FlashBet, RoomPlayer, RoomState, Sabotage } from '../../../shared/types';
 
 const PRESETS: { question: string; options: string[] }[] = [
   { question: 'Next corner leads to a shot on target?', options: ['Yes', 'No'] },
@@ -19,15 +20,17 @@ const PRESETS: { question: string; options: string[] }[] = [
 
 export function HostPanelPage() {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
   const { session, userId } = useAuthStore();
   const flags = useFeatureFlags();
-  const { room, players, refresh } = useRoomRealtime(code);
+  const { room, players, refresh, applySnapshot, patchRoom } = useRoomRealtime(code);
   const [bets, setBets] = useState<FlashBet[]>([]);
   const [customQ, setCustomQ] = useState('');
   const [customOpts, setCustomOpts] = useState(['Yes', 'No']);
   const [wagerTier, setWagerTier] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
   const [resolveOpt, setResolveOpt] = useState('');
   const [roomSabotages, setRoomSabotages] = useState<Sabotage[]>([]);
+  const [transitioning, setTransitioning] = useState(false);
 
   const isHost = room?.host_id === userId;
   const simRoom = isSimulationRoom(room);
@@ -59,33 +62,68 @@ export function HostPanelPage() {
     return true;
   };
 
-  const startPredictions = async () => {
+  const transitionRoom = async (
+    call: () => Promise<Record<string, unknown>>,
+    newState: RoomState,
+    redirectPath?: string,
+    successMsg?: string,
+  ) => {
     if (!guard()) return;
-    await api.startRoom(session!.access_token, code!);
-    toast.success('Predictions started');
-    refresh();
+    setTransitioning(true);
+    patchRoom({ state: newState });
+    try {
+      const res = await call();
+      const snap = snapshotFromApi(res);
+      if (snap) applySnapshot(snap);
+      if (successMsg) toast.success(successMsg);
+      if (redirectPath) navigate(redirectPath);
+    } catch (e) {
+      refresh();
+      toast.error(e instanceof Error ? e.message : 'Transition failed');
+    } finally {
+      setTransitioning(false);
+    }
   };
 
-  const lockPredictions = async () => {
-    if (!guard()) return;
-    await api.lockRoom(session!.access_token, code!);
-    toast.success('Predictions locked');
-    refresh();
-  };
+  const startPredictions = () =>
+    transitionRoom(
+      () => api.startRoom(session!.access_token, code!),
+      'PREDICTING',
+      `/room/${code}/predict`,
+      'Predictions started',
+    );
 
-  const goLive = async () => {
-    if (!guard()) return;
-    await api.goLive(session!.access_token, code!);
-    toast.success('Room is live');
-    refresh();
-  };
+  const lockPredictions = () =>
+    transitionRoom(
+      () => api.lockRoom(session!.access_token, code!),
+      'CLOSED',
+      undefined,
+      'Predictions locked',
+    );
 
-  const endMatch = async () => {
-    if (!guard()) return;
-    await api.endMatch(session!.access_token, code!);
-    toast.success('Match ended');
-    refresh();
-  };
+  const startDraft = () =>
+    transitionRoom(
+      () => api.startDraft(session!.access_token, code!),
+      'DRAFTING',
+      `/room/${code}/draft`,
+      'Draft started',
+    );
+
+  const goLive = () =>
+    transitionRoom(
+      () => api.goLive(session!.access_token, code!),
+      'LIVE',
+      `/room/${code}/live`,
+      'Room is live',
+    );
+
+  const endMatch = () =>
+    transitionRoom(
+      () => api.endMatch(session!.access_token, code!),
+      'RESULTS',
+      `/room/${code}/results`,
+      'Match ended',
+    );
 
   const launchPreset = async (preset: typeof PRESETS[0]) => {
     if (!guard()) return;
@@ -195,40 +233,35 @@ export function HostPanelPage() {
         <h2 className="text-xs text-pitch-muted uppercase mb-2">Phase</h2>
         <div className="grid gap-2">
           {room.state === 'LOBBY' && (
-            <button type="button" onClick={startPredictions} className="ui-btn ui-btn-primary w-full">
-              Start predictions
+            <button type="button" onClick={startPredictions} disabled={transitioning} className="ui-btn ui-btn-primary w-full">
+              {transitioning ? 'Starting…' : 'Start predictions'}
             </button>
           )}
           {room.state === 'PREDICTING' && (
-            <button type="button" onClick={lockPredictions} className="ui-btn w-full border border-pitch-amber text-pitch-amber">
-              Lock predictions
+            <button type="button" onClick={lockPredictions} disabled={transitioning} className="ui-btn w-full border border-pitch-amber text-pitch-amber">
+              {transitioning ? 'Locking…' : 'Lock predictions'}
             </button>
           )}
           {room.state === 'CLOSED' && (
             <>
               {flags.fantasy_draft && (
-                <button type="button" onClick={async () => {
-                  if (!session || !code) return;
-                  await api.startDraft(session.access_token, code);
-                  toast.success('Draft started');
-                  refresh();
-                }} className="ui-btn ui-btn-primary w-full">
-                  Start draft
+                <button type="button" onClick={startDraft} disabled={transitioning} className="ui-btn ui-btn-primary w-full">
+                  {transitioning ? 'Starting draft…' : 'Start draft'}
                 </button>
               )}
-              <button type="button" onClick={goLive} className="ui-btn w-full border border-pitch-muted text-pitch-muted">
-                {flags.fantasy_draft ? 'Skip draft / Go live' : 'Go live'}
+              <button type="button" onClick={goLive} disabled={transitioning} className="ui-btn w-full border border-pitch-muted text-pitch-muted">
+                {transitioning ? 'Going live…' : flags.fantasy_draft ? 'Skip draft / Go live' : 'Go live'}
               </button>
             </>
           )}
           {room.state === 'DRAFTING' && (
-            <button type="button" onClick={goLive} className="ui-btn ui-btn-primary w-full">
-              Go live
+            <button type="button" onClick={goLive} disabled={transitioning} className="ui-btn ui-btn-primary w-full">
+              {transitioning ? 'Going live…' : 'Go live'}
             </button>
           )}
           {(room.state === 'LIVE' || room.state === 'FULL_TIME') && (
-            <button type="button" onClick={endMatch} className="ui-btn w-full border border-pitch-amber text-pitch-amber">
-              End match
+            <button type="button" onClick={endMatch} disabled={transitioning} className="ui-btn w-full border border-pitch-amber text-pitch-amber">
+              {transitioning ? 'Ending…' : 'End match'}
             </button>
           )}
         </div>
@@ -266,6 +299,12 @@ export function HostPanelPage() {
           {activeBet && (
             <div className="ui-surface p-3 mb-3 border border-pitch-amber">
               <p className="text-sm text-white mb-2">Active: {activeBet.question}</p>
+              {activeBet.answer_key && (
+                <p className="text-xs text-pitch-muted mb-2 font-mono">
+                  Resolve key: {activeBet.answer_key}
+                  {activeBet.match_minute != null ? ` · min ${activeBet.match_minute}` : ''}
+                </p>
+              )}
               <select
                 value={resolveOpt}
                 onChange={(e) => setResolveOpt(e.target.value)}

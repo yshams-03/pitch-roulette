@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { api, ApiError } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import { CountdownRing } from './ui/CountdownRing';
 import { Button } from './ui/Button';
 import type { FlashBet, FlashBetAnswer } from '../../../shared/types';
@@ -53,6 +54,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfold
   const [results, setResults] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
+  const seenTracked = useRef(false);
 
   const answered = myAnswer?.chosen_option || picked;
   const resolved = bet.state === 'RESOLVED';
@@ -63,7 +65,18 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfold
   useEffect(() => {
     setPicked(null);
     setRemaining(secondsLeft(bet.locks_at));
+    seenTracked.current = false;
   }, [bet.id, bet.locks_at]);
+
+  useEffect(() => {
+    if (seenTracked.current || resolved) return;
+    seenTracked.current = true;
+    trackEvent('flash_bet_seen', {
+      bet_id: bet.id,
+      room_code: code,
+      wager_amount: bet.wager_amount,
+    });
+  }, [bet.id, bet.wager_amount, code, resolved]);
 
   useEffect(() => {
     const tick = () => setRemaining(secondsLeft(bet.locks_at));
@@ -91,6 +104,7 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfold
     setSubmitting(true);
     try {
       await api.answerFlashBet(token, code, bet.id, opt);
+      trackEvent('flash_bet_answered', { bet_id: bet.id, room_code: code, option: opt });
       toast.success(`Locked in: ${opt}`);
       onAnswered();
     } catch (e) {
@@ -108,6 +122,8 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfold
       setSubmitting(false);
     }
   };
+
+  const urgent = open && remaining > 0 && remaining <= 10;
 
   return (
     <motion.div
@@ -128,8 +144,17 @@ export function FlashBetCard({ bet, code, token, myAnswer, onAnswered, blindfold
 
       <p className="text-xs text-[var(--text-secondary)] mb-4 text-center">
         Wager: {bet.wager_amount} PC · Win {bet.wager_amount * 2} PC · +0.5 PP if correct
-        {open && <span className="text-[var(--pr-green)]"> · Tap to answer</span>}
+        {open && !urgent && <span className="text-[var(--pr-green)]"> · Tap to answer</span>}
       </p>
+
+      {urgent && !answered && (
+        <p
+          className="text-sm font-bold text-[var(--pr-gold)] mb-3 text-center animate-pulse"
+          data-testid="flash-bet-urgency"
+        >
+          {remaining}s left — pick now!
+        </p>
+      )}
 
       {locked && !answered && !resolved && (
         <p className="text-xs text-[var(--pr-gold)] mb-2 text-center">Voting closed — waiting for result…</p>

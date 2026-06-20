@@ -124,11 +124,20 @@ jobs:
         working-directory: pitch-roulette/frontend
         run: npm run build
 
-      - name: Run E2E smoke
+      - name: Start preview server
+        working-directory: pitch-roulette/frontend
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 &
+          sleep 2
+          curl -sf http://127.0.0.1:4173/
+
+      - name: Run PR smoke E2E (11 credential-free specs)
         working-directory: pitch-roulette/frontend
         env:
+          E2E_SKIP_WEBSERVER: '1'
+          E2E_BASE_URL: http://127.0.0.1:4173
           E2E_API_URL: http://127.0.0.1:8000
-        run: npx playwright test e2e/home.spec.ts --project=chromium
+        run: npx playwright test --grep @pr-smoke --project=chromium
 
   # Full E2E is manual/nightly — credential requirements.
   # See: .github/workflows/e2e-nightly.yml

@@ -260,3 +260,86 @@ async def fetch_fixture_by_id(match_id: str) -> tuple[dict | None, str | None]:
     if data.get("id"):
         return _normalize_match(data), None
     return None, err or "Match not found"
+
+
+async def fetch_match_raw(match_id: str) -> tuple[dict | None, str | None]:
+    data, err = await _api_get(f"matches/{match_id}")
+    if data.get("id"):
+        return data, None
+    return None, err or "Match not found"
+
+
+def _fd_team_side(team: dict | None, home: dict, away: dict) -> str:
+    tid = str((team or {}).get("id", ""))
+    if tid and tid == str(home.get("id", "")):
+        return "home"
+    if tid and tid == str(away.get("id", "")):
+        return "away"
+    name = _team_name(team, "")
+    if name and name == _team_name(home, ""):
+        return "home"
+    return "away"
+
+
+def parse_fd_match_events(raw: dict) -> list[dict]:
+    """Goals, bookings, substitutions from Football-Data.org match payload."""
+    home = raw.get("homeTeam") or {}
+    away = raw.get("awayTeam") or {}
+    events: list[dict] = []
+    idx = 0
+
+    for goal in raw.get("goals") or []:
+        team = _fd_team_side(goal.get("team"), home, away)
+        scorer = (goal.get("scorer") or {}).get("name") or "Unknown"
+        assist_name = (goal.get("assist") or {}).get("name")
+        minute = int(goal.get("minute") or 0)
+        gtype = (goal.get("type") or "REGULAR").upper()
+        etype = "OWN_GOAL" if gtype == "OWN" else "GOAL"
+        hg = _score_side(raw.get("score"), "home")
+        ag = _score_side(raw.get("score"), "away")
+        events.append({
+            "id": f"fd-goal-{idx}",
+            "minute": minute,
+            "added_minute": goal.get("injuryTime"),
+            "type": etype,
+            "team": team,
+            "player": scorer,
+            "assist": assist_name,
+            "detail": f"{hg}-{ag}",
+            "description": None,
+        })
+        idx += 1
+
+    for card in raw.get("bookings") or []:
+        team = _fd_team_side(card.get("team"), home, away)
+        player = (card.get("player") or {}).get("name") or "Unknown"
+        minute = int(card.get("minute") or 0)
+        card_type = (card.get("card") or "YELLOW").upper()
+        etype = "RED" if card_type == "RED" else "YELLOW"
+        events.append({
+            "id": f"fd-card-{idx}",
+            "minute": minute,
+            "type": etype,
+            "team": team,
+            "player": player,
+            "description": None,
+        })
+        idx += 1
+
+    for sub in raw.get("substitutions") or []:
+        team = _fd_team_side(sub.get("team"), home, away)
+        minute = int(sub.get("minute") or 0)
+        player_out = (sub.get("playerOut") or {}).get("name") or "Out"
+        player_in = (sub.get("playerIn") or {}).get("name") or "In"
+        events.append({
+            "id": f"fd-sub-{idx}",
+            "minute": minute,
+            "type": "SUBSTITUTION",
+            "team": team,
+            "player": player_in,
+            "assist": player_out,
+            "description": None,
+        })
+        idx += 1
+
+    return sorted(events, key=lambda e: (e.get("minute") or 0))

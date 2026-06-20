@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from auth import get_current_user_id
 from services.feature_flags import get_feature_flags
-from services.telemetry import ALLOWED_EVENTS, funnel_summary, track_event
+from services.telemetry import ALLOWED_EVENTS, funnel_insights, funnel_summary, health_alerts, track_event
 
 router = APIRouter(prefix="/api", tags=["ops"])
 
@@ -31,4 +31,4 @@ async def ingest_event(body: TrackEventRequest, user_id: str = Depends(get_curre
 
 @router.get("/metrics/funnel")
 async def metrics_funnel(hours: int = 24):
-    return {"hours": hours, "events": funnel_summary(hours=hours)}
+    return funnel_insights(hours=hours)

@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { snapshotFromApi } from '../lib/roomSnapshot';
 import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { RoomConnectionBadge } from '../components/RoomConnectionBadge';
@@ -24,8 +25,9 @@ export function RoomLobbyPage() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { session, userId } = useAuthStore();
-  const { room, players, connectionStatus, refresh } = useRoomRealtime(code);
+  const { room, players, connectionStatus, refresh, applySnapshot, patchRoom } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'lobby');
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     if (!session || !code) return;
@@ -37,12 +39,19 @@ export function RoomLobbyPage() {
 
   const start = async () => {
     if (!session || !code) return;
+    setStarting(true);
+    patchRoom({ state: 'PREDICTING' });
     try {
-      await api.startRoom(session.access_token, code);
+      const res = await api.startRoom(session.access_token, code);
+      const snap = snapshotFromApi(res);
+      if (snap) applySnapshot(snap);
       toast.success('Predictions open!');
       navigate(`/room/${code}/predict`);
     } catch (e) {
+      refresh();
       toast.error(e instanceof Error ? e.message : 'Failed to start predictions');
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -127,10 +136,11 @@ export function RoomLobbyPage() {
           fullWidth
           data-testid="start-predictions"
           onClick={start}
-          disabled={players.length < 2}
+          loading={starting}
+          disabled={players.length < 2 || starting}
           title={players.length < 2 ? 'Need at least 2 players' : undefined}
         >
-          Start Predictions →
+          {starting ? 'Starting…' : 'Start Predictions →'}
         </Button>
       )}
 

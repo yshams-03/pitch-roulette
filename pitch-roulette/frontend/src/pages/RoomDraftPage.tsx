@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api, ApiError } from '../lib/api';
+import { snapshotFromApi } from '../lib/roomSnapshot';
 import { useAuthStore } from '../store/authStore';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
@@ -19,7 +20,7 @@ export function RoomDraftPage() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { session, userId } = useAuthStore();
-  const { room, refresh } = useRoomRealtime(code);
+  const { room, refresh, applySnapshot, patchRoom } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'draft');
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [myPicks, setMyPicks] = useState(0);
@@ -41,13 +42,20 @@ export function RoomDraftPage() {
       const rem = Math.max(0, 60 - Math.floor((Date.now() - started) / 1000));
       setSeconds(rem);
       if (rem === 0 && room.host_id === userId && session && code) {
-        api.goLive(session.access_token, code).then(() => navigate(`/room/${code}/live`)).catch(() => {});
+        patchRoom({ state: 'LIVE' });
+        api.goLive(session.access_token, code)
+          .then((res) => {
+            const snap = snapshotFromApi(res);
+            if (snap) applySnapshot(snap);
+            navigate(`/room/${code}/live`);
+          })
+          .catch(() => refresh());
       }
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [room, session, code, userId, navigate]);
+  }, [room, session, code, userId, navigate, patchRoom, applySnapshot, refresh]);
 
   const pick = async (playerId: string) => {
     if (!session || !code || myPicks >= 3) return;

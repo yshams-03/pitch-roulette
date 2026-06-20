@@ -19,9 +19,10 @@ async function request<T>(
   timeoutMs = path.startsWith('/api/demo') ? 45000 : 20000,
 ): Promise<T> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+  const hasBody = options.body != null && options.body !== '';
+  if (hasBody && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();
@@ -121,7 +122,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body || {}),
     }),
-  roomResults: (code: string) => request<Record<string, unknown>>(`/api/rooms/${code}/results`),
+  matchFacts: (code: string) =>
+    request<Record<string, unknown>>(`/api/rooms/${code}/match-facts`),
+  roomResults: (code: string) =>
+    request<{
+      leaderboard: Record<string, unknown>[];
+      party_leaderboard: Record<string, unknown>[];
+      draft_picks: Record<string, unknown>[];
+      actual_score: { home: number; away: number };
+    }>(`/api/rooms/${code}/results`),
 
   flashBets: (code: string) => request<{ bets: Record<string, unknown>[] }>(`/api/rooms/${code}/flash-bets`),
   createFlashBet: (token: string, code: string, body: Record<string, unknown>) =>

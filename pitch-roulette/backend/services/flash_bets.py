@@ -128,6 +128,83 @@ def create_manual_flash_bet(
     return row
 
 
+def create_scheduled_flash_bet(
+    room_id: str,
+    question: str,
+    options: list[str],
+    answer_key: str,
+    wager_tier: str,
+    match_minute: int,
+    match_context_snapshot: dict,
+    *,
+    window_seconds: int | None = None,
+) -> dict | None:
+    """Time-scheduled auto flash bet (idempotent per room + match minute)."""
+    db = get_supabase()
+    event_key = f"schedule-{match_minute}-{answer_key}"
+
+    existing = db.table("flash_bets").select("id").eq("room_id", room_id).eq(
+        "event_key", event_key
+    ).execute()
+    if existing.data:
+        return None
+
+    try:
+        dup = (
+            db.table("flash_bet_minutes")
+            .select("match_minute")
+            .eq("room_id", room_id)
+            .eq("match_minute", match_minute)
+            .execute()
+            .data
+        )
+        if dup:
+            return None
+    except Exception:
+        pass
+
+    wager = pc_wager_for_tier(wager_tier)
+    now = _now()
+    window = window_seconds or FLASH_WINDOW_SECONDS
+    locks = now + timedelta(seconds=window)
+    payload = {
+        "room_id": room_id,
+        "triggered_by": "AUTO",
+        "question": question,
+        "options": options,
+        "wager_tier": wager_tier,
+        "wager_amount": wager,
+        "state": "OPEN",
+        "opens_at": now.isoformat(),
+        "locks_at": locks.isoformat(),
+        "event_key": event_key,
+        "answer_key": answer_key,
+        "match_minute": match_minute,
+        "match_context_snapshot": match_context_snapshot,
+        "auto_resolved": False,
+    }
+    try:
+        row = db.table("flash_bets").insert(payload).execute().data[0]
+    except Exception:
+        slim = {k: v for k, v in payload.items() if k not in (
+            "answer_key", "match_minute", "match_context_snapshot", "auto_resolved",
+        )}
+        try:
+            row = db.table("flash_bets").insert(slim).execute().data[0]
+        except Exception:
+            return None
+
+    try:
+        db.table("flash_bet_minutes").insert({
+            "room_id": room_id,
+            "match_minute": match_minute,
+            "flash_bet_id": row["id"],
+        }).execute()
+    except Exception:
+        pass
+    return row
+
+
 def create_auto_flash_bet(
     room_id: str,
     question: str,
@@ -234,9 +311,59 @@ def submit_answer(code: str, bet_id: str, user_id: str, chosen_option: str) -> d
     }).execute().data[0]
 
 
+def _flash_streak_bonus(room_id: str, user_id: str) -> float:
+    """+1 PP when this correct answer is the 3rd consecutive in the room."""
+    db = get_supabase()
+    try:
+        answers = (
+            db.table("flash_bet_answers")
+            .select("is_correct, answered_at")
+            .eq("room_id", room_id)
+            .eq("user_id", user_id)
+            .order("answered_at", desc=True)
+            .limit(10)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return 0.0
+    streak = 0
+    for a in answers:
+        if a.get("is_correct"):
+            streak += 1
+        else:
+            break
+    return 1.0 if streak == 2 else 0.0
+
+
+def resolve_flash_bet_by_id(
+    code: str,
+    bet_id: str,
+    user_id: str,
+    correct_option: str,
+    *,
+    auto_resolved: bool = False,
+) -> dict:
+    room = _get_room_by_code(code)
+    if not auto_resolved:
+        _require_host(room, user_id)
+    return _resolve_flash_bet_internal(room, bet_id, correct_option, auto_resolved=auto_resolved)
+
+
 def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str) -> dict:
     room = _get_room_by_code(code)
     _require_host(room, user_id)
+    return _resolve_flash_bet_internal(room, bet_id, correct_option, auto_resolved=False)
+
+
+def _resolve_flash_bet_internal(
+    room: dict,
+    bet_id: str,
+    correct_option: str,
+    *,
+    auto_resolved: bool = False,
+) -> dict:
     db = get_supabase()
 
     bet = db.table("flash_bets").select("*").eq("id", bet_id).eq("room_id", room["id"]).execute()
@@ -256,6 +383,8 @@ def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str)
     for ans in answers:
         correct = ans["chosen_option"] == correct_option
         pp_change = FLASH_BET_PP_CORRECT if correct else 0.0
+        if correct:
+            pp_change += _flash_streak_bonus(room["id"], ans["user_id"])
         pc_wager = float(b.get("wager_amount", 1))
         flags = get_sabotage_flags_for_answer(room["id"], ans["user_id"], bet_id)
 
@@ -273,11 +402,14 @@ def resolve_flash_bet(code: str, bet_id: str, user_id: str, correct_option: str)
     waste_flash_sabotages_on_resolve(room["id"], bet_id, answered_ids)
 
     now = _now().isoformat()
-    db.table("flash_bets").update({
+    update_payload: dict = {
         "state": "RESOLVED",
         "correct_option": correct_option,
         "resolved_at": now,
-    }).eq("id", bet_id).execute()
+    }
+    if auto_resolved:
+        update_payload["auto_resolved"] = True
+    db.table("flash_bets").update(update_payload).eq("id", bet_id).execute()
 
     updated = db.table("flash_bets").select("*").eq("id", bet_id).execute().data[0]
     breakdown = db.table("flash_bet_answers").select("*").eq("flash_bet_id", bet_id).execute().data or []

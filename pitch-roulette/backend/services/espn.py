@@ -191,14 +191,15 @@ async def fetch_scoreboard(dates: str | None = None) -> tuple[list[dict], str | 
     return events, None
 
 
-async def fetch_summary(event_id: str) -> tuple[dict | None, str | None]:
+async def fetch_summary_raw(event_id: str) -> tuple[dict, dict | None, str | None]:
+    """Raw ESPN summary JSON plus normalized event snapshot."""
     settings = get_settings()
     data, err = await _get(
         f"apis/site/v2/sports/soccer/{settings.ESPN_LEAGUE_SLUG}/summary",
         {"event": event_id},
     )
     if err:
-        return None, err
+        return {}, None, err
     header = data.get("header") or {}
     competitions = header.get("competitions") or data.get("competitions") or []
     if competitions:
@@ -208,10 +209,188 @@ async def fetch_summary(event_id: str) -> tuple[dict | None, str | None]:
             "date": competitions[0].get("date"),
             "status": competitions[0].get("status"),
         }
-        return normalize_event(fake_event), None
+        return data, normalize_event(fake_event), None
     if data.get("events"):
-        return normalize_event(data["events"][0]), None
-    return None, "ESPN summary not found"
+        return data, normalize_event(data["events"][0]), None
+    return data, None, "ESPN summary not found"
+
+
+async def fetch_summary(event_id: str) -> tuple[dict | None, str | None]:
+    _, summary, err = await fetch_summary_raw(event_id)
+    return summary, err
+
+
+def _stat_value(team_stats: list, *names: str) -> float | int | None:
+    for block in team_stats or []:
+        label = (block.get("name") or block.get("label") or "").lower()
+        for name in names:
+            if name.lower() in label:
+                raw = block.get("displayValue") or block.get("value")
+                if raw is None:
+                    return None
+                try:
+                    return float(str(raw).replace("%", "").strip())
+                except ValueError:
+                    return None
+    return None
+
+
+def extract_stats_from_summary(data: dict, snapshot: dict) -> dict | None:
+    """Parse possession / shots / xG from ESPN summary boxscore."""
+    boxscore = data.get("boxscore") or {}
+    teams = boxscore.get("teams") or []
+    if len(teams) < 2:
+        return None
+
+    home_id = None
+    comps = (data.get("header") or {}).get("competitions") or data.get("competitions") or []
+    if comps:
+        home_c, _ = _competitors(comps[0])
+        home_id = (home_c.get("team") or {}).get("id")
+
+    home_stats = teams[0].get("statistics") or []
+    away_stats = teams[1].get("statistics") or []
+    if home_id and str(teams[1].get("team", {}).get("id")) == str(home_id):
+        home_stats, away_stats = away_stats, home_stats
+
+    possession_home = _stat_value(home_stats, "possession", "ball possession")
+    possession_away = _stat_value(away_stats, "possession", "ball possession")
+    shots_home = _stat_value(home_stats, "total shots", "shots")
+    shots_away = _stat_value(away_stats, "total shots", "shots")
+    sot_home = _stat_value(home_stats, "shots on target", "on target")
+    sot_away = _stat_value(away_stats, "shots on target", "on target")
+    xg_home = _stat_value(home_stats, "expected goals", "xg")
+    xg_away = _stat_value(away_stats, "expected goals", "xg")
+    corners_home = _stat_value(home_stats, "corner", "corners")
+    corners_away = _stat_value(away_stats, "corner", "corners")
+    fouls_home = _stat_value(home_stats, "foul", "fouls")
+    fouls_away = _stat_value(away_stats, "foul", "fouls")
+    off_home = _stat_value(home_stats, "offside", "offsides")
+    off_away = _stat_value(away_stats, "offside", "offsides")
+
+    if all(
+        v is None
+        for v in (
+            possession_home, possession_away, shots_home, shots_away,
+            sot_home, sot_away, xg_home, xg_away,
+        )
+    ):
+        return None
+
+    def _pair(h, a, default=0):
+        return {"home": int(h) if h is not None and h == int(h) else (h or default),
+                "away": int(a) if a is not None and a == int(a) else (a or default)}
+
+    return {
+        "possession": _pair(possession_home or 50, possession_away or 50),
+        "shots": _pair(shots_home, shots_away),
+        "shots_on_target": _pair(sot_home, sot_away),
+        "xg": {"home": float(xg_home or 0), "away": float(xg_away or 0)},
+        "corners": _pair(corners_home, corners_away),
+        "fouls": _pair(fouls_home, fouls_away),
+        "offsides": _pair(off_home, off_away),
+    }
+
+
+def _parse_detail_minute(detail: dict) -> int:
+    clock = detail.get("clock") or {}
+    raw = clock.get("displayValue") or clock.get("value") or "0"
+    m = re.match(r"(\d+)", str(raw))
+    return int(m.group(1)) if m else 0
+
+
+def _detail_team_side(detail: dict, home_team_id: str | None) -> str:
+    tid = str((detail.get("team") or {}).get("id", ""))
+    if home_team_id and tid:
+        return "home" if tid == str(home_team_id) else "away"
+    home_away = (detail.get("team") or {}).get("homeAway")
+    if home_away == "home":
+        return "home"
+    if home_away == "away":
+        return "away"
+    return "home"
+
+
+def _map_espn_detail_type(detail: dict) -> str | None:
+    text = ((detail.get("type") or {}).get("text") or "").lower()
+    if detail.get("scoringPlay"):
+        if detail.get("ownGoal") or "own goal" in text:
+            return "OWN_GOAL"
+        if detail.get("penaltyKick") or "penalty" in text:
+            return "PENALTY_SCORED" if "miss" not in text else "PENALTY_MISSED"
+        return "GOAL"
+    if "var" in text:
+        return "VAR"
+    if detail.get("redCard") or "second yellow" in text:
+        return "SECOND_YELLOW" if "second" in text else "RED"
+    if detail.get("yellowCard") or "yellow" in text:
+        return "YELLOW"
+    if "substitution" in text or "sub" in text:
+        return "SUBSTITUTION"
+    if detail.get("penaltyKick") or "penalty" in text:
+        return "PENALTY_MISSED" if "miss" in text else "PENALTY_SCORED"
+    if "goal" in text:
+        return "GOAL"
+    return None
+
+
+def facts_events_from_snapshot(snapshot: dict, raw_data: dict | None = None) -> list[dict]:
+    """Convert ESPN details[] to normalized match-facts events."""
+    details = snapshot.get("details") or []
+    home_id = None
+    if raw_data:
+        comps = (raw_data.get("header") or {}).get("competitions") or raw_data.get("competitions") or []
+        if comps:
+            home_c, _ = _competitors(comps[0])
+            home_id = (home_c.get("team") or {}).get("id")
+
+    events: list[dict] = []
+    running_home = 0
+    running_away = 0
+    for i, detail in enumerate(details):
+        etype = _map_espn_detail_type(detail)
+        if not etype:
+            continue
+        team = _detail_team_side(detail, str(home_id) if home_id else None)
+        athletes = detail.get("athletesInvolved") or []
+        player = athletes[0].get("displayName") if athletes else "Unknown"
+        assist = athletes[1].get("displayName") if len(athletes) > 1 else None
+        minute = _parse_detail_minute(detail)
+
+        if etype in ("GOAL", "OWN_GOAL", "PENALTY_SCORED"):
+            if etype == "OWN_GOAL":
+                if team == "home":
+                    running_away += 1
+                else:
+                    running_home += 1
+            elif team == "home":
+                running_home += 1
+            else:
+                running_away += 1
+            detail_score = f"{running_home}-{running_away}"
+        else:
+            detail_score = None
+
+        desc = None
+        if etype == "VAR":
+            desc = (detail.get("type") or {}).get("text") or "VAR Review"
+
+        evt = {
+            "id": detail.get("event_key") or f"espn-{snapshot.get('espn_event_id')}-{i}",
+            "minute": minute,
+            "added_minute": None,
+            "type": etype,
+            "team": team,
+            "player": player,
+            "assist": assist,
+            "detail": detail_score,
+            "description": desc,
+        }
+        if etype == "SUBSTITUTION" and len(athletes) >= 2:
+            evt["player"] = athletes[0].get("displayName", "In")
+            evt["assist"] = athletes[1].get("displayName", "Out")
+        events.append(evt)
+    return events
 
 
 async def find_event_id(home_team: str, away_team: str, kickoff: str | None = None) -> str | None:

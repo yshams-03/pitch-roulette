@@ -26,6 +26,13 @@ PC_REWARDS = {
     "PENALTY_MISSED": -10.0,
 }
 
+DRAFT_PP_REWARDS = {
+    "GOAL": 1.0,
+    "ASSIST": 0.5,
+    "MAN_OF_MATCH": 1.0,
+    "RED_CARD": -0.5,
+}
+
 # Demo squads (France vs Netherlands)
 DEMO_SQUAD: list[dict[str, Any]] = [
     {"player_id": "fr-gk-1", "name": "Maignan", "team": "HOME", "position": "GK", "shirt_number": 1},
@@ -341,3 +348,23 @@ def process_draft_event(room_id: str, event_type: str, player_id: str | None) ->
         adjust_pc(room_id, pick["user_id"], delta, "draft_reward", pick["id"])
         earned = float(pick.get("pc_earned") or 0) + delta
         db.table("draft_picks").update({"pc_earned": earned}).eq("id", pick["id"]).execute()
+        pp_delta = DRAFT_PP_REWARDS.get(key)
+        if pp_delta:
+            _apply_draft_pp(room_id, pick["user_id"], pp_delta)
+
+
+def _apply_draft_pp(room_id: str, user_id: str, pp_delta: float) -> None:
+    if pp_delta == 0:
+        return
+    db = get_supabase()
+    player = db.table("room_players").select("id, session_pp").eq("room_id", room_id).eq(
+        "user_id", user_id
+    ).execute()
+    if player.data:
+        p = player.data[0]
+        new_session = float(p.get("session_pp") or 0) + pp_delta
+        db.table("room_players").update({"session_pp": new_session}).eq("id", p["id"]).execute()
+    profile = db.table("profiles").select("total_points").eq("id", user_id).execute()
+    if profile.data:
+        new_total = float(profile.data[0].get("total_points", 0)) + pp_delta
+        db.table("profiles").update({"total_points": new_total}).eq("id", user_id).execute()

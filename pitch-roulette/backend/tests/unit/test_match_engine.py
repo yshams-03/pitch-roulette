@@ -50,11 +50,9 @@ class TestNormalizeRoomMatchData:
 
 
 class TestDemoMatchSimulation:
-    @patch("services.match_engine.create_auto_flash_bet")
     @patch("services.match_engine._record_room_event")
-    def test_goal_home_increments_score(self, _record, mock_bet, fake_db, monkeypatch):
+    def test_goal_home_increments_score(self, _record, fake_db, monkeypatch):
         monkeypatch.setattr("services.match_engine.get_supabase", lambda: fake_db)
-        mock_bet.return_value = {"id": "fb-1", "state": "OPEN"}
         room = fake_db.tables["rooms"][0]
         sim = DemoMatchSimulation(room)
         result = sim.inject_event("GOAL_HOME", source="demo_random")
@@ -62,7 +60,7 @@ class TestDemoMatchSimulation:
         assert result["event"]["home_goals"] == 1
         assert result["event"]["away_goals"] == 0
         assert result["event"]["type"] == "GOAL_HOME"
-        mock_bet.assert_called_once()
+        assert result["flash_bet"] is None
 
     def test_invalid_event_raises(self, fake_db):
         sim = DemoMatchSimulation(fake_db.tables["rooms"][0])

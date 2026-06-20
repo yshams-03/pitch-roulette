@@ -16,7 +16,7 @@ import {
 const e2eDir = dirname(fileURLToPath(import.meta.url));
 
 test.describe('Feature 5 — Cleanup', () => {
-  test('bracket SVG connector lines visible when knockout data exists', async ({ page }) => {
+  test('bracket SVG connector lines visible when knockout data exists @pr-smoke', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Bracket' }).click();
     const hasRound = await page.getByText(/Round of/i).isVisible().catch(() => false);
@@ -37,7 +37,7 @@ test.describe('Feature 5 — Cleanup', () => {
     await cleanupRoom(auth.accessToken, code).catch(() => {});
   });
 
-  test('nightly E2E workflow file exists and is valid YAML', async () => {
+  test('nightly E2E workflow file exists and is valid YAML @pr-smoke', async () => {
     const repoRoot = resolve(e2eDir, '../../..');
     const workflowPath = resolve(repoRoot, '.github/workflows/e2e-nightly.yml');
     expect(existsSync(workflowPath)).toBe(true);
@@ -48,7 +48,7 @@ test.describe('Feature 5 — Cleanup', () => {
     expect(content).toContain('playwright install');
   });
 
-  test('branch protection documented in README', async () => {
+  test('branch protection documented in README @pr-smoke', async () => {
     const readmePath = resolve(e2eDir, '../../README.md');
     const content = readFileSync(readmePath, 'utf8');
     expect(content).toMatch(/Branch protection/i);

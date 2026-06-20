@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { snapshotFromApi } from '../lib/roomSnapshot';
 import { useAuthStore } from '../store/authStore';
 import { RoomConnectionBadge } from '../components/RoomConnectionBadge';
 import { SideReveal } from '../components/SideReveal';
@@ -32,12 +33,14 @@ export function RoomPredictPage() {
   const navigate = useNavigate();
   const { session, userId } = useAuthStore();
   const flags = useFeatureFlags();
-  const { room, players, predictions, connectionStatus, refresh } = useRoomRealtime(code);
+  const { room, players, predictions, connectionStatus, refresh, applySnapshot, patchRoom } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'predict');
   const [home, setHome] = useState(1);
   const [away, setAway] = useState(1);
   const [outcome, setOutcome] = useState<PredictedOutcome>('HOME_WIN');
   const [submitting, setSubmitting] = useState(false);
+  const [locking, setLocking] = useState(false);
+  const [goingLive, setGoingLive] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
 
   const me = players.find((p) => p.user_id === userId);
@@ -70,19 +73,36 @@ export function RoomPredictPage() {
 
   const lockPredictions = async () => {
     if (!session || !code) return;
-    await api.lockRoom(session.access_token, code);
-    toast.success('Predictions locked');
-    refresh();
+    setLocking(true);
+    patchRoom({ state: 'CLOSED' });
+    try {
+      const res = await api.lockRoom(session.access_token, code);
+      const snap = snapshotFromApi(res);
+      if (snap) applySnapshot(snap);
+      toast.success('Predictions locked');
+    } catch (e) {
+      refresh();
+      toast.error(e instanceof Error ? e.message : 'Failed to lock');
+    } finally {
+      setLocking(false);
+    }
   };
 
   const goLive = async () => {
     if (!session || !code) return;
+    setGoingLive(true);
+    patchRoom({ state: 'LIVE' });
     try {
-      await api.goLive(session.access_token, code);
+      const res = await api.goLive(session.access_token, code);
+      const snap = snapshotFromApi(res);
+      if (snap) applySnapshot(snap);
       toast.success('Match is live!');
       navigate(`/room/${code}/live`);
     } catch (e) {
+      refresh();
       toast.error(e instanceof Error ? e.message : 'Could not go live');
+    } finally {
+      setGoingLive(false);
     }
   };
 
@@ -236,14 +256,14 @@ export function RoomPredictPage() {
       )}
 
       {isHost && room.state === 'PREDICTING' && (
-        <Button variant="secondary" fullWidth data-testid="lock-predictions" onClick={lockPredictions} className="mb-2">
-          Lock predictions
+        <Button variant="secondary" fullWidth data-testid="lock-predictions" onClick={lockPredictions} loading={locking} className="mb-2">
+          {locking ? 'Locking…' : 'Lock predictions'}
         </Button>
       )}
 
       {isHost && locked && (
-        <Button variant="primary" fullWidth data-testid="go-live" onClick={goLive} className="mb-2">
-          Skip draft / Go live
+        <Button variant="primary" fullWidth data-testid="go-live" onClick={goLive} loading={goingLive} className="mb-2">
+          {goingLive ? 'Going live…' : 'Skip draft / Go live'}
         </Button>
       )}
 

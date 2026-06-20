@@ -472,6 +472,191 @@
   animation: flash-wrong 0.4s ease-out;
 }
 
+/* Match facts — FotMob-style feed */
+.event-row {
+  display: grid;
+  grid-template-columns: 32px 28px 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  transition: background var(--duration-fast);
+  list-style: none;
+}
+.event-row:hover { background: var(--bg-overlay); }
+.event-row.away {
+  grid-template-columns: auto 1fr 28px 32px;
+  direction: rtl;
+}
+.event-row.away * { direction: ltr; }
+.event-minute {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.event-icon { font-size: 1.1rem; text-align: center; }
+.event-player { font-weight: 600; font-size: 0.9rem; }
+.event-assist {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.event-text-right { text-align: right; }
+.event-score {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.event-row.goal .event-score,
+.event-row.penalty_scored .event-score {
+  background: rgba(0,230,118,0.1);
+  border-color: rgba(0,230,118,0.3);
+  color: var(--pr-green);
+}
+.event-row.var { background: rgba(213,0,249,0.05); }
+.event-row.var:hover { background: rgba(213,0,249,0.1); }
+.event-row.flash-bet-active {
+  border: 1px solid var(--pr-purple);
+  background: rgba(213,0,249,0.05);
+  border-radius: var(--radius-md);
+  position: relative;
+}
+.event-row.flash-bet-active::after {
+  content: '⚡ Flash bet';
+  position: absolute;
+  right: var(--space-4);
+  top: 2px;
+  font-size: 0.7rem;
+  color: var(--pr-purple);
+  font-weight: 700;
+}
+.event-row.away.flash-bet-active::after {
+  right: auto;
+  left: var(--space-4);
+}
+
+.match-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  list-style: none;
+}
+.match-divider::before,
+.match-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+}
+.added-time {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: var(--space-1) 0;
+  list-style: none;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.stat-value-home, .stat-value-away {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.stat-value-home { text-align: right; color: var(--pr-blue); }
+.stat-value-away { text-align: left; color: #FF6B35; }
+.stat-bars {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  position: relative;
+  flex: 1;
+  min-height: 4px;
+}
+.stat-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: var(--bg-surface);
+  padding: 0 4px;
+  z-index: 1;
+}
+.stat-bar-home {
+  height: 4px;
+  background: var(--pr-blue);
+  border-radius: 2px;
+  transition: width 0.8s var(--ease-out);
+  margin-left: auto;
+}
+.stat-bar-away {
+  height: 4px;
+  background: #FF6B35;
+  border-radius: 2px;
+  transition: width 0.8s var(--ease-out);
+}
+
+.match-facts-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.match-facts-tab {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+.match-facts-tab[data-active="true"] {
+  color: var(--text-primary);
+  border-bottom-color: var(--pr-green);
+}
+
+.goal-scorers-line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+.goal-scorers-home { text-align: left; flex: 1; }
+.goal-scorers-away { text-align: right; flex: 1; }
+.goal-scorers-sep { color: var(--text-muted); }
+
+.match-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

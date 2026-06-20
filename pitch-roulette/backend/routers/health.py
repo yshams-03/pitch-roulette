@@ -7,7 +7,7 @@ from database import get_supabase
 from services import sports_service
 from services.db_compat import has_unify_migration
 from services.feature_flags import get_feature_flags
-from services.telemetry import funnel_summary
+from services.telemetry import funnel_insights, funnel_summary, health_alerts
 
 router = APIRouter(tags=["health"])
 
@@ -47,8 +47,14 @@ async def health():
     info["feature_flags"] = get_feature_flags()
     info["sentry_enabled"] = bool(os.getenv("SENTRY_DSN", "").strip())
     info["telemetry_24h"] = funnel_summary(hours=24)
-    info["active_rooms"] = _count_rooms(state="LIVE")
+    live_count = _count_rooms(state="LIVE")
+    info["active_rooms"] = live_count
     info["active_simulation_rooms"] = _count_rooms(state="LIVE", simulation=True)
+    info["alerts"] = health_alerts(live_count if live_count >= 0 else 0)
+    insights = funnel_insights(hours=24)
+    if insights.get("insight"):
+        info["product_insight"] = insights["insight"]
+    info["flash_bet_conversion_24h"] = insights.get("flash_bet_conversion_rate")
     info["supabase_connected"] = _count_rooms() >= 0
     return info
 

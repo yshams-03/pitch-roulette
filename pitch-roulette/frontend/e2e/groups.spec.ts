@@ -47,7 +47,7 @@ test.describe('Friend Groups', () => {
 });
 
 test.describe('Global Leaderboard', () => {
-  test('global leaderboard loads and paginates', async ({ page }) => {
+  test('global leaderboard loads and paginates @pr-smoke', async ({ page }) => {
     if (hasE2ECredentials()) await loginViaUI(page);
     await page.goto('/leaderboard');
     await expect(page.getByRole('heading', { name: /Global Leaderboard/i })).toBeVisible();

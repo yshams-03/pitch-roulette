@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api } from '../lib/api';
+import { snapshotFromApi } from '../lib/roomSnapshot';
 import { supabase } from '../lib/supabase';
 import { playDemoEventSound } from '../lib/demoSounds';
 import { isSimulationRoom, showSimulationBadge } from '../lib/roomUtils';
@@ -9,7 +10,8 @@ import { useAuthStore } from '../store/authStore';
 import { Avatar } from '../components/Avatar';
 import { TeamCrest } from '../components/TeamCrest';
 import { FlashBetCard } from '../components/FlashBetCard';
-import { MatchEventsPanel, eventLabel } from '../components/MatchEventsPanel';
+import { MatchFacts, GoalScorersLine, parseGroupKey } from '../components/MatchFacts';
+import { eventLabel } from '../components/MatchEventsPanel';
 import { ReactionOverlay } from '../components/ReactionOverlay';
 import { RoomChat } from '../components/RoomChat';
 import { RoomConnectionBadge } from '../components/RoomConnectionBadge';
@@ -18,20 +20,24 @@ import { SabotageNotification } from '../components/SabotageNotification';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
 import { useRoomRealtime } from '../hooks/useRoomRealtime';
 import { useRoomRedirect } from '../hooks/useRoomRedirect';
-import type { FlashBet, FlashBetAnswer, MatchEventLog, RoomPlayer, Sabotage } from '../../../shared/types';
+import type { FlashBet, FlashBetAnswer, MatchEventLog, MatchFactsData, RoomPlayer, Sabotage } from '../../../shared/types';
 
 export function RoomLivePage() {
   const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
   const { session, userId } = useAuthStore();
   const flags = useFeatureFlags();
-  const { room, players, connectionStatus, refresh } = useRoomRealtime(code);
+  const { room, players, connectionStatus, refresh, applySnapshot, patchRoom } = useRoomRealtime(code);
   useRoomRedirect(code, room?.state, 'live');
   const [bets, setBets] = useState<FlashBet[]>([]);
   const [answers, setAnswers] = useState<FlashBetAnswer[]>([]);
   const [targetingMe, setTargetingMe] = useState<Sabotage[]>([]);
   const [sabotageAlert, setSabotageAlert] = useState<(Sabotage & { buyer_name?: string }) | null>(null);
   const [mobileTab, setMobileTab] = useState<'standings' | 'events' | 'chat'>('standings');
+  const [mobileEventsSubTab, setMobileEventsSubTab] = useState<'facts' | 'stats'>('facts');
+  const [matchFacts, setMatchFacts] = useState<MatchFactsData | null>(null);
   const [silenceSecs, setSilenceSecs] = useState(0);
+  const [ending, setEnding] = useState(false);
 
   useEffect(() => {
     if (!session || !code || !room || !userId) return;
@@ -162,9 +168,20 @@ export function RoomLivePage() {
 
   const endMatch = async () => {
     if (!session || !code) return;
-    await api.endMatch(session.access_token, code);
-    toast.success('Match ended');
-    refresh();
+    setEnding(true);
+    patchRoom({ state: 'RESULTS' });
+    try {
+      const res = await api.endMatch(session.access_token, code);
+      const snap = snapshotFromApi(res);
+      if (snap) applySnapshot(snap);
+      toast.success('Match ended');
+      navigate(`/room/${code}/results`);
+    } catch (e) {
+      refresh();
+      toast.error(e instanceof Error ? e.message : 'Could not end match');
+    } finally {
+      setEnding(false);
+    }
   };
 
   if (!room || !session) return (
@@ -181,7 +198,14 @@ export function RoomLivePage() {
   const awayTeam = match?.away_team || 'TBD';
   const homeGoals = match?.home_goals ?? (room.state === 'RESULTS' ? room.actual_home_goals ?? 0 : 0);
   const awayGoals = match?.away_goals ?? (room.state === 'RESULTS' ? room.actual_away_goals ?? 0 : 0);
-  const eventsLog = (match?.events_log || []) as MatchEventLog[];
+  const roomEnded = room.state === 'RESULTS' || room.state === 'FULL_TIME';
+  const factsEvents = matchFacts?.events || [];
+  const displayHomeGoals = matchFacts?.match.home_score ?? homeGoals;
+  const displayAwayGoals = matchFacts?.match.away_score ?? awayGoals;
+  const matchStatus = matchFacts?.match.status;
+  const matchMinute = matchFacts?.match.minute ?? match?.minute;
+  const addedTime = matchFacts?.match.added_time;
+  const groupKey = parseGroupKey(match?.group_name);
 
   const myAnswer = activeBet
     ? answers.find((a) => a.flash_bet_id === activeBet.id && a.user_id === userId)
@@ -228,47 +252,32 @@ export function RoomLivePage() {
             </div>
             <div>
               <p className="score text-3xl tabular-nums">
-                {homeGoals} – {awayGoals}
+                {displayHomeGoals} – {displayAwayGoals}
               </p>
-              {match.is_live ? (
-                <span data-testid="live-badge" className="badge badge-live pulse-red">LIVE {match.minute ?? ''}&apos;</span>
-              ) : match.demo ? (
-                <span className="text-xs text-[var(--text-muted)]">Demo match — events incoming</span>
-              ) : null}
+              <div className="match-status-line">
+                {match.is_live || matchStatus === '1H' || matchStatus === '2H' ? (
+                  <span data-testid="live-badge" className="badge badge-live pulse-red">
+                    ● LIVE {matchMinute ?? ''}&apos;
+                  </span>
+                ) : matchStatus === 'HT' ? (
+                  <span className="badge">HT</span>
+                ) : matchStatus === 'FT' ? (
+                  <span className="text-xs text-[var(--text-muted)]">FT</span>
+                ) : match.demo ? (
+                  <span className="text-xs text-[var(--text-muted)]">Demo match</span>
+                ) : null}
+                {addedTime != null && addedTime > 0 && (
+                  <span className="text-[var(--text-muted)]">+{addedTime} min</span>
+                )}
+              </div>
             </div>
             <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
               <TeamCrest name={awayTeam} logo={match.away_logo} size="lg" />
               <span data-testid="scoreboard-away" className="text-xs text-[var(--text-secondary)] truncate max-w-full">{awayTeam}</span>
             </div>
           </div>
+          {factsEvents.length > 0 && <GoalScorersLine events={factsEvents} />}
         </div>
-      )}
-
-      {activeBet && flags.flash_bets && (
-        <FlashBetCard
-          key={activeBet.id}
-          bet={activeBet}
-          code={code!}
-          token={session.access_token}
-          myAnswer={myAnswer}
-          blindfolded={blindfolded}
-          onAnswered={() => {
-            loadBets();
-            if (code && activeBet) {
-              api.flashBetResults(code, activeBet.id).then((res) => {
-                setAnswers((res.answers as FlashBetAnswer[]) || []);
-              }).catch(() => {});
-            }
-            refresh();
-            loadSabotages();
-          }}
-        />
-      )}
-
-      {!openBet && simRoom && room.state === 'LIVE' && (
-        <p className="text-sm text-center text-[var(--text-muted)] mb-4 waiting-pulse">
-          Next flash bet incoming…
-        </p>
       )}
 
       <nav className="pr-tabs mb-4 md:hidden">
@@ -283,8 +292,70 @@ export function RoomLivePage() {
         ))}
       </nav>
 
-      <div className="md:grid md:grid-cols-[1fr_1.2fr] md:gap-4">
-        <div className={`space-y-4 ${mobileTab !== 'standings' ? 'hidden md:block' : ''}`}>
+      <div className="md:grid md:grid-cols-[1fr_1.2fr] md:gap-4 md:mb-4">
+        <div className={`space-y-4 ${mobileTab !== 'events' ? 'hidden md:block' : ''}`}>
+          {activeBet && flags.flash_bets && (
+            <FlashBetCard
+              key={activeBet.id}
+              bet={activeBet}
+              code={code!}
+              token={session.access_token}
+              myAnswer={myAnswer}
+              blindfolded={blindfolded}
+              onAnswered={() => {
+                loadBets();
+                if (code && activeBet) {
+                  api.flashBetResults(code, activeBet.id).then((res) => {
+                    setAnswers((res.answers as FlashBetAnswer[]) || []);
+                  }).catch(() => {});
+                }
+                refresh();
+                loadSabotages();
+              }}
+            />
+          )}
+
+          {!openBet && simRoom && room.state === 'LIVE' && (
+            <p className="text-sm text-center text-[var(--text-muted)] waiting-pulse">
+              Next flash bet incoming…
+            </p>
+          )}
+        </div>
+
+        <div className={`space-y-2 ${mobileTab !== 'events' ? 'hidden md:block' : ''}`}>
+          {mobileTab === 'events' && (
+            <div className="md:hidden match-facts-tabs border border-[var(--border)] rounded-t-[var(--radius-md)] overflow-hidden">
+              {(['facts', 'stats'] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="match-facts-tab"
+                  data-active={mobileEventsSubTab === id}
+                  onClick={() => setMobileEventsSubTab(id)}
+                >
+                  {id === 'facts' ? 'Facts' : 'Stats'}
+                </button>
+              ))}
+            </div>
+          )}
+          <MatchFacts
+            roomCode={code!}
+            matchId={room.match_id}
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            groupKey={groupKey}
+            isLive={room.state === 'LIVE' && (match?.is_live ?? true)}
+            roomEnded={roomEnded}
+            activeFlashBet={openBet ?? null}
+            onNewEvent={handleNewEvent}
+            onFactsUpdate={setMatchFacts}
+            hideTableTab={mobileTab === 'events'}
+            forcedTab={mobileTab === 'events' ? mobileEventsSubTab : undefined}
+          />
+        </div>
+      </div>
+
+      <div className={`space-y-4 mb-4 ${mobileTab !== 'standings' ? 'hidden md:block' : ''}`}>
           <div className="surface p-3">
             <h2 className="text-xs text-[var(--text-secondary)] mb-2 uppercase font-semibold">Session PP</h2>
             <div className="space-y-2">
@@ -316,18 +387,6 @@ export function RoomLivePage() {
           )}
         </div>
 
-        <div className={`space-y-4 ${mobileTab !== 'events' ? 'hidden md:block' : ''}`}>
-          {simRoom && (
-            <MatchEventsPanel
-              events={eventsLog}
-              homeTeam={homeTeam}
-              awayTeam={awayTeam}
-              onNewEvent={handleNewEvent}
-            />
-          )}
-        </div>
-      </div>
-
       <div className={mobileTab !== 'chat' ? 'hidden md:block' : ''}>
         <RoomChat
           roomId={room.id}
@@ -352,8 +411,8 @@ export function RoomLivePage() {
       )}
 
       {isHost && (
-        <button type="button" onClick={endMatch} className="btn btn-secondary w-full mt-4 border-[var(--pr-gold)] text-[var(--pr-gold)]">
-          End match / Go to results
+        <button type="button" onClick={endMatch} disabled={ending} className="btn btn-secondary w-full mt-4 border-[var(--pr-gold)] text-[var(--pr-gold)]">
+          {ending ? 'Ending match…' : 'End match / Go to results'}
         </button>
       )}
 

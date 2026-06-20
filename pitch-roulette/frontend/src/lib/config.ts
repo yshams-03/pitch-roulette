@@ -2,7 +2,12 @@
 // Vite bakes these in at build time
 
 export const config = {
-  apiUrl: (import.meta.env.VITE_API_BASE_URL as string || 'http://localhost:8000').replace(/\/$/, ''),
+  apiUrl: (() => {
+    const raw = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+    if (raw) return raw.replace(/\/$/, '');
+    // Production: same-origin /api/* (proxied by Vercel → Railway). Local: backend on :8000.
+    return import.meta.env.PROD ? '' : 'http://127.0.0.1:8000';
+  })(),
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
   environment: (import.meta.env.VITE_ENVIRONMENT as string) || 'development',

@@ -7,6 +7,10 @@ vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../lib/analytics', () => ({
+  trackEvent: vi.fn(),
+}));
+
 vi.mock('../lib/api', () => ({
   api: {
     answerFlashBet: vi.fn().mockResolvedValue({}),

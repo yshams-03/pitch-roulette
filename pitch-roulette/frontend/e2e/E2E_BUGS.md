@@ -15,3 +15,15 @@ Tests adapt to the current UI/API without modifying feature code. Documented gap
 | `data-testid="room-code"` | Lobby code test id | Font-mono text without testid | URL / text assertions |
 
 Fix these in a future feature PR, then tighten E2E assertions.
+
+---
+
+## 2026-06-20 stabilization notes
+
+- Backend E2E traffic is now standardized on `http://localhost:8000`
+- Side reveal now has stable `data-testid` hooks for visibility + dismissal
+- Desktop live chat now renders expanded by default so `room-chat` assertions can see the content area
+- Logout flow now clears Supabase local storage keys and navigates back to `/auth/login`
+- `real-room-flow` setup now uses a fresh browser context to avoid inheriting broken browser state
+
+These are test-stability and app-behavior fixes, not test skips or timeout reductions.

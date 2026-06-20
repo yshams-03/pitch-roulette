@@ -151,6 +151,15 @@ async def get_room(code: str):
     return _room_snapshot(_get_room(code))
 
 
+@router.get("/{code}/match-facts")
+async def get_match_facts(code: str):
+    room = _get_room(code)
+    return await sports_service.get_live_match_facts(
+        str(room.get("match_id") or ""),
+        room=room,
+    )
+
+
 @router.delete("/{code}")
 async def delete_room(code: str, user_id: str = Depends(get_current_user_id)):
     """Host-only cleanup — cascades to players, predictions, flash bets, etc."""

@@ -3,7 +3,8 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import type { Prediction, Room, RoomPlayer } from '../../../shared/types';
 
-const FALLBACK_POLL_MS = 5000;
+const POLL_CONNECTED_MS = 10_000;
+const POLL_DISCONNECTED_MS = 1_000;
 
 export type ConnectionStatus = 'connecting' | 'live' | 'reconnecting';
 
@@ -22,14 +23,22 @@ export function useRoomRealtime(roomCode: string | undefined) {
     }
   }, [roomCode]);
 
+  const applySnapshot = useCallback((snapshot: Room | Record<string, unknown>) => {
+    setRoom(snapshot as Room);
+  }, []);
+
+  const patchRoom = useCallback((patch: Partial<Room>) => {
+    setRoom((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    if (!roomCode || !supabase || !room?.id) return;
+    if (!roomCode || !supabase) return;
 
-    const roomId = room.id;
+    const codeUpper = roomCode.toUpperCase();
     let cancelled = false;
 
     const stopPoll = () => {
@@ -39,46 +48,56 @@ export function useRoomRealtime(roomCode: string | undefined) {
       }
     };
 
-    const startPoll = () => {
-      if (pollRef.current) return;
-      pollRef.current = setInterval(load, FALLBACK_POLL_MS);
+    const startPoll = (ms: number) => {
+      stopPoll();
+      pollRef.current = setInterval(load, ms);
     };
 
-    const channel = supabase
-      .channel(`room-rt-${roomId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
-        () => load(),
-      )
-      .on(
+    startPoll(POLL_DISCONNECTED_MS);
+
+    const channel = supabase.channel(`room-rt-${codeUpper}`);
+
+    channel.on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `room_code=eq.${codeUpper}` },
+      () => {
+        load();
+      },
+    );
+
+    const roomId = room?.id;
+    if (roomId) {
+      channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'room_players', filter: `room_id=eq.${roomId}` },
         () => load(),
-      )
-      .on(
+      );
+      channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'predictions', filter: `room_id=eq.${roomId}` },
         () => load(),
-      )
-      .subscribe((subStatus) => {
-        if (cancelled) return;
-        if (subStatus === 'SUBSCRIBED') {
-          setStatus('live');
-          stopPoll();
-        } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
-          setStatus('reconnecting');
-          startPoll();
-        } else if (subStatus === 'CLOSED') {
-          setStatus('reconnecting');
-          startPoll();
-        }
-      });
+      );
+    }
+
+    channel.subscribe((subStatus) => {
+      if (cancelled) return;
+      if (subStatus === 'SUBSCRIBED') {
+        setStatus('live');
+        startPoll(POLL_CONNECTED_MS);
+        load();
+      } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
+        setStatus('reconnecting');
+        startPoll(POLL_DISCONNECTED_MS);
+      } else if (subStatus === 'CLOSED') {
+        setStatus('reconnecting');
+        startPoll(POLL_DISCONNECTED_MS);
+      }
+    });
 
     return () => {
       cancelled = true;
       stopPoll();
-      if (supabase) supabase.removeChannel(channel);
+      supabase.removeChannel(channel);
     };
   }, [room?.id, roomCode, load]);
 
@@ -92,5 +111,7 @@ export function useRoomRealtime(roomCode: string | undefined) {
     isConnected: status === 'live',
     connectionStatus: status,
     refresh: load,
+    applySnapshot,
+    patchRoom,
   };
 }

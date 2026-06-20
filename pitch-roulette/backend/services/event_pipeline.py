@@ -12,15 +12,14 @@ from database import get_supabase
 from services import sports_service
 from services.bots import answer_open_flash_bet
 from services.db_compat import fetch_live_rooms
+from services.flash_bet_scheduler import maybe_fire_flash_bet, try_auto_resolve_locked_bets
 from services.flash_bets import (
     _missing_phase2_table,
     _warn_migration_once,
-    create_auto_flash_bet,
     list_flash_bets,
     lock_expired_bets,
 )
 from services.match_engine import (
-    EVENT_QUESTIONS,
     cleanup_abandoned_live_demo_rooms,
     infer_match_source,
     inject_random_event,
@@ -226,16 +225,8 @@ async def _process_live_api_room(room: dict, db) -> None:
     latest_detail_key = last_key
     for detail in details[start_idx:]:
         event_key = detail.get("event_key")
-        event_type = detail.get("type")
-        if not event_key or not event_type:
+        if not event_key:
             continue
-        if event_type not in EVENT_QUESTIONS:
-            continue
-
-        q, opts = EVENT_QUESTIONS[event_type]
-        created = create_auto_flash_bet(room["id"], q, opts, event_type, event_key)
-        if created:
-            logger.info("Auto flash bet %s for room %s (%s)", created["id"], room["id"], event_type)
         _record_room_event(room["id"], detail, "espn_webhook")
         latest_detail_key = event_key
 
@@ -274,8 +265,13 @@ async def _process_score_fallback(room: dict, db, fd_live: dict | None = None) -
     prev_away = int(prev.get("away_goals", 0))
 
     if home != prev_home or away != prev_away:
-        q, opts = EVENT_QUESTIONS["GOAL"]
-        create_auto_flash_bet(room["id"], q, opts, "GOAL", event_key)
+        _record_room_event(room["id"], {
+            "event_key": event_key,
+            "type": "GOAL",
+            "minute": minute,
+            "home_goals": home,
+            "away_goals": away,
+        }, "score_fallback")
 
     db.table("rooms").update({
         "match_data": live,
@@ -325,6 +321,15 @@ async def _tick_once() -> None:
             _warn_migration_once()
             return
         raise
+
+    for room in live_rooms:
+        if room.get("state") != "LIVE":
+            continue
+        try:
+            await maybe_fire_flash_bet(room)
+            await try_auto_resolve_locked_bets(room)
+        except Exception as exc:
+            logger.debug("flash scheduler %s: %s", room.get("room_code"), exc)
 
     for room in live_rooms:
         if room.get("state") != "LIVE":

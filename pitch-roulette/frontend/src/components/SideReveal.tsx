@@ -67,7 +67,13 @@ export function SideReveal({ teamName, side, teamLogo, onDismiss }: Props) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         >
-          <Button variant="primary" size="lg" fullWidth onClick={onDismiss}>
+          <Button
+            variant="primary"
+            size="lg"
+            fullWidth
+            onClick={onDismiss}
+            data-testid="dismiss-side-reveal"
+          >
             Let&apos;s go! 🔥
           </Button>
         </motion.div>

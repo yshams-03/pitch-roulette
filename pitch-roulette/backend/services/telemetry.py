@@ -13,6 +13,7 @@ ALLOWED_EVENTS = frozenset({
     "room_joined",
     "predictions_locked",
     "draft_picked",
+    "flash_bet_seen",
     "flash_bet_answered",
     "sabotage_purchased",
     "match_ended",
@@ -20,6 +21,9 @@ ALLOWED_EVENTS = frozenset({
     "group_created",
     "page_view",
 })
+
+# Ops alert when live room count exceeds this (see /api/health alerts[]).
+LIVE_ROOM_ALERT_THRESHOLD = int(__import__("os").getenv("LIVE_ROOM_ALERT_THRESHOLD", "40"))
 
 
 def track_event(
@@ -59,3 +63,38 @@ def funnel_summary(hours: int = 24) -> dict[str, int]:
         return counts
     except Exception:
         return {}
+
+
+def funnel_insights(hours: int = 24) -> dict:
+    """Product insights derived from funnel events."""
+    events = funnel_summary(hours=hours)
+    seen = events.get("flash_bet_seen", 0)
+    answered = events.get("flash_bet_answered", 0)
+    conversion = round(answered / seen, 3) if seen > 0 else None
+    drop_off = seen - answered if seen >= answered else 0
+
+    insight = None
+    if seen >= 10 and conversion is not None and conversion < 0.5:
+        insight = (
+            f"Flash bet conversion {conversion:.0%} ({answered}/{seen}) — "
+            "users see bets but don't answer. Urgency CTA active in FlashBetCard."
+        )
+
+    return {
+        "hours": hours,
+        "events": events,
+        "flash_bet_seen": seen,
+        "flash_bet_answered": answered,
+        "flash_bet_drop_off": drop_off,
+        "flash_bet_conversion_rate": conversion,
+        "insight": insight,
+    }
+
+
+def health_alerts(active_live_rooms: int) -> list[str]:
+    alerts: list[str] = []
+    if active_live_rooms >= LIVE_ROOM_ALERT_THRESHOLD:
+        alerts.append(
+            f"high_live_room_count:{active_live_rooms}>={LIVE_ROOM_ALERT_THRESHOLD}"
+        )
+    return alerts

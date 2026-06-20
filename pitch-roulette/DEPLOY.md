@@ -6,6 +6,7 @@ Pitch Roulette ships as a **Vite React frontend** (Vercel) and a **FastAPI backe
 
 1. Supabase project with migrations `001`–`007` applied (see `supabase/migrations/`)
 2. GitHub repo connected to Vercel and Railway (or run deploy workflow manually)
+3. **Railway must deploy a branch that includes the Dockerfiles** (`main` or `feat/phase3-sabotage`). If deploy fails with "couldn't locate the dockerfile", check **Settings → Source → Branch** is not an old branch.
 
 ## Backend (Railway)
 
@@ -48,19 +49,31 @@ Health check: `GET /api/health` should return `supabase_connected: true`
 
 ## Frontend (Vercel)
 
-1. Import repo → root directory `pitch-roulette/frontend`
-2. Build: `npm run build` · Output: `dist`
-3. Environment variables:
+1. Import repo → **Settings → General → Root Directory** → **`pitch-roulette/frontend`**
+2. Framework Preset: **Vite** (auto-detected if root is correct)
+3. Build: `npm run build` · Output: **`dist`**
+4. Environment variables:
 
 | Variable | Example |
 |----------|---------|
 | `VITE_SUPABASE_URL` | `https://xxx.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | anon key |
-| `VITE_API_BASE_URL` | Railway backend URL |
+| `VITE_API_BASE_URL` | `https://pitch-roulette-production.up.railway.app` |
 | `VITE_SENTRY_DSN` | Optional |
-| `VITE_ENVIRONMENT` | `staging` / `production` |
+| `VITE_ENVIRONMENT` | `production` |
 
-4. `vercel.json` enables SPA routing for React Router
+5. `vercel.json` in `pitch-roulette/frontend` rewrites all routes to `index.html` for React Router
+
+### Vercel NOT_FOUND troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|--------|-----|
+| **404 on every URL** including `/` | Root Directory is repo root, not `pitch-roulette/frontend` | Set Root Directory → `pitch-roulette/frontend`, redeploy |
+| **404 only on refresh** e.g. `/auth/login` | SPA rewrite missing or not loaded | Ensure `vercel.json` is inside the Root Directory folder |
+| **404 on `*.js` / assets** | Rewrite catches static files | Use rewrite that excludes `/assets/` (see `vercel.json`) |
+| **API 404** on Vercel domain | Frontend host has no `/api/*` backend | API lives on Railway — set `VITE_API_BASE_URL` to Railway URL |
+
+After changing Root Directory or env vars, trigger **Redeploy** (env changes require rebuild for `VITE_*` vars).
 
 ## GitHub Actions
 
